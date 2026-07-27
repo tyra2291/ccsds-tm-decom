@@ -1,28 +1,18 @@
-# tests/test_frame.py
-from ccsds_tm_decom.frame import parse_primary_header
+from ccsds_tm_decom.frame import parse_tf_primary_header
 
 
-def test_parse_primary_header():
+def test_parse_tf_primary_header():
     """
-    Verify that a hand-crafted CCSDS primary header byte sequence decodes
-    into the expected field values.
+    Verify decoding of a hand-crafted 6-byte TM Transfer Frame primary
+    header (Frame Primary Header + Data Field Status combined).
 
-    Test frame breakdown (6 bytes):
-        0x08, 0x64 -> word1: version=0, packet_type=0, sec_hdr_flag=1, apid=100
-        0xC0, 0x00 -> word2: sequence_flags=3, sequence_count=0
-        0x00, 0x05 -> packet_length=5
+    Encodes: version=0, spacecraft_id=100, virtual_channel_id=0,
+    ocf_flag=0, master_channel_frame_count=0, virtual_channel_frame_count=5,
+    segment_length_id=3 (0b11), first_header_pointer=0.
     """
-    raw = bytes([0x08, 0x64, 0xC0, 0x00, 0x00, 0x05])
-    print(f"\nInput bytes: {raw.hex(sep=' ')}")
+    raw = bytes([0x06, 0x40, 0x00, 0x05, 0x18, 0x00])
+    header = parse_tf_primary_header(raw)
 
-    header = parse_primary_header(raw)
-    print(f"Decoded header: {header}")
-
-    assert header["version"] == 0, f"Expected version=0, got {header['version']}"
-    assert header["apid"] == 100, f"Expected apid=100, got {header['apid']}"
-    assert header["sequence_count"] == 0, f"Expected sequence_count=0, got {header['sequence_count']}"
-
-    print("All assertions passed.")
-
-if __name__ == "__main__":
-    test_parse_primary_header()
+    assert header["spacecraft_id"] == 100
+    assert header["virtual_channel_id"] == 0
+    assert header["virtual_channel_frame_count"] == 5

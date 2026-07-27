@@ -1,0 +1,11 @@
+{
+  "name": "tf_frame_primary_header",
+  "fields": [
+    {"name": "version", "bits": 2},
+    {"name": "spacecraft_id", "bits": 10},
+    {"name": "virtual_channel_id", "bits": 3},
+    {"name": "ocf_flag", "bits": 1},
+    {"name": "master_channel_frame_count", "bits": 8},
+    {"name": "virtual_channel_frame_count", "bits": 8}
+  ]
+}

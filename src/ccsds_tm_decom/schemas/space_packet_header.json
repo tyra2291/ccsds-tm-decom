@@ -1,5 +1,5 @@
 {
-  "name": "ccsds_primary_header",
+  "name": "space_packet_header",
   "fields": [
     {"name": "version", "bits": 3},
     {"name": "packet_type", "bits": 1},

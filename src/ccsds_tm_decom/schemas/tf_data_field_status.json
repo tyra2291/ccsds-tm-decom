@@ -1,0 +1,10 @@
+{
+  "name": "tf_data_field_status",
+  "fields": [
+    {"name": "secondary_header_flag", "bits": 1},
+    {"name": "sync_flag", "bits": 1},
+    {"name": "packet_order_flag", "bits": 1},
+    {"name": "segment_length_id", "bits": 2},
+    {"name": "first_header_pointer", "bits": 11}
+  ]
+}
