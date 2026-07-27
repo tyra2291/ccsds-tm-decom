@@ -1,0 +1,12 @@
+{
+  "name": "ccsds_primary_header",
+  "fields": [
+    {"name": "version", "bits": 3},
+    {"name": "packet_type", "bits": 1},
+    {"name": "secondary_header_flag", "bits": 1},
+    {"name": "apid", "bits": 11},
+    {"name": "sequence_flags", "bits": 2},
+    {"name": "sequence_count", "bits": 14},
+    {"name": "packet_length", "bits": 16}
+  ]
+}

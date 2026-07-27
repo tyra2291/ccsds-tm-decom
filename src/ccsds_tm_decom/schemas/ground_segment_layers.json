@@ -1,0 +1,5 @@
+{
+  "layers": [
+    {"name": "sle_wrapper", "header_bytes": 2, "tail_bytes": 1}
+  ]
+}
