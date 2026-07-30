@@ -1,5 +1,11 @@
 {
   "layers": [
-    {"name": "sle_wrapper", "header_bytes": 2, "tail_bytes": 1}
+    {
+      "name": "cortex_wrapper",
+      "header_bytes": 64,
+      "tail_bytes": 4,
+      "expected_tail_hex": "B669FD2E",
+      "inner_frame_length": 994
+    }
   ]
 }
