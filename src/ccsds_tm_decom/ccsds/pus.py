@@ -6,9 +6,9 @@ to Space Packets whose CCSDS primary header has secondary_header_flag set.
 """
 from pathlib import Path
 
-from ccsds_tm_decom.generic_decoder import decode_fields, load_schema
+from ccsds_tm_decom.ccsds.generic_decoder import decode_fields, load_schema
 
-_SCHEMA_PATH = Path(__file__).parent / "schemas" / "pus_secondary_header.json"
+_SCHEMA_PATH = Path(__file__).parent.parent / "schemas" / "pus_secondary_header.json"
 _SCHEMA = load_schema(_SCHEMA_PATH)
 _HEADER_SIZE_BYTES = sum(f["bits"] for f in _SCHEMA["fields"]) // 8
 

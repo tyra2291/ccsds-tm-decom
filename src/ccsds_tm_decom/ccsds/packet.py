@@ -9,10 +9,9 @@ frame's data field before extraction continues.
 """
 from pathlib import Path
 
-from ccsds_tm_decom.generic_decoder import decode_fields, load_schema
-from ccsds_tm_decom.pus import parse_pus_header
-
-_SCHEMA_PATH = Path(__file__).parent / "schemas" / "space_packet_header.json"
+from ccsds_tm_decom.ccsds.generic_decoder import decode_fields, load_schema
+from ccsds_tm_decom.ccsds.pus import parse_pus_header
+_SCHEMA_PATH = Path(__file__).parent.parent / "schemas" / "space_packet_header.json"
 _SCHEMA = load_schema(_SCHEMA_PATH)
 _HEADER_SIZE_BYTES = sum(f["bits"] for f in _SCHEMA["fields"]) // 8
 

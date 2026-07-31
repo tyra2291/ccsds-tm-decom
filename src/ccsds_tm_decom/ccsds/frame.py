@@ -1,9 +1,9 @@
 # src/ccsds_tm_decom/frame.py
 from pathlib import Path
 
-from ccsds_tm_decom.generic_decoder import decode_fields, load_schema
+from ccsds_tm_decom.ccsds.generic_decoder import decode_fields, load_schema
 
-_SCHEMAS_DIR = Path(__file__).parent / "schemas"
+_SCHEMAS_DIR = Path(__file__).parent.parent / "schemas"
 
 
 def decode_schema_chain(data: bytes, schema_filenames: list[str]) -> dict:

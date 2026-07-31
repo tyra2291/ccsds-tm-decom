@@ -1,4 +1,4 @@
-from ccsds_tm_decom.pipeline import Layer, run_pipeline
+from ccsds_tm_decom.ground_segment.pipeline import Layer, run_pipeline
 
 
 def test_strip_single_layer_with_header_and_tail():

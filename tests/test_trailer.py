@@ -1,4 +1,4 @@
-from ccsds_tm_decom.trailer import compute_fecf, verify_trailer
+from ccsds_tm_decom.ground_segment.trailer import compute_fecf, verify_trailer
 
 
 def test_verify_trailer_valid_fecf():

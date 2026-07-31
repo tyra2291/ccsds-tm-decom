@@ -1,19 +1,14 @@
 """
-End-to-end orchestration test using two real, consecutive TM Transfer
-Frames captured from a satellite simulator log (CADU frames, no CORTEX
-wrapping). Both frames have secondary_header_flag=1, meaning a variable-
-length TF Secondary Header plus a mission-specific 14-byte security
-header precede the actual data field. Frame 0 has first_header_pointer=10
-and Frame 1 has first_header_pointer=11 — both non-zero and not
-NO_PACKET_START, meaning each frame's data field starts with leftover
-bytes from a packet that began in the previous frame (genuine spillover).
+End-to-end test of the TCP client using a real local test server that
+simulates a telemetry front-end (e.g. CORTEX): sends two real captured
+frames back to back, and verifies the client decodes both correctly.
 """
-from ccsds_tm_decom.orchestration.decoder import process_frame
-from ccsds_tm_decom.ground_segment.pipeline import Layer
+import asyncio
 
-# Real captured frame: 4-byte CADU sync marker + TF header + secondary
-# header + security header + data field + 4-byte OCF + 2-byte FECF.
-# first_header_pointer = 10.
+from ccsds_tm_decom.ground_segment.pipeline import Layer
+from ccsds_tm_decom.io.tcp_client import run_tcp_client
+from ccsds_tm_decom.orchestration.decoder import FrameResult
+
 FRAME_0_HEX = (
     "1ACFFC1D00D1D596980A03290000FF00AAAAAAAAAAAAAAAAAAAAAAAA0007DEDEDEDEDEDEDEDE08D4C41C02E010031900"
     "0000ECEDEC1882050000000A0644064405F705F70F00000644064405F705F70F00000AA10E46041C0E46038F0E460B2E"
@@ -38,7 +33,6 @@ FRAME_0_HEX = (
     "07DEDEDEDEDEDEDEDE07FFC0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0158E000EA83"
 )
 
-# Real captured frame immediately following Frame 0. first_header_pointer = 11.
 FRAME_1_HEX = (
     "1ACFFC1D00D1D697980B03290000FF00AAAAAAAAAAAAAAAAAAAAAAAA000007DEDEDEDEDEDEDEDE08D4C423004C100319"
     "000000ECEE9F2D9005000000010000ECEE0000000000000812000000010000000004073AB30B413A21D54ABF3505013F"
@@ -63,51 +57,53 @@ FRAME_1_HEX = (
     "000000000000000000000000AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA01A4E400A35A"
 )
 
-# These frames are raw CADU (no CORTEX): just a 4-byte sync marker to strip.
+_SECURITY_HEADER_BYTES = 14
 _CADU_SYNC_LAYER = Layer(name="cadu_sync_marker", header_bytes=4, tail_bytes=0)
 
-# Mission-specific security header following the standard TF Secondary
-# Header, observed in this capture (see conversation history for how this
-# was derived from the secondary header's own length field).
-_SECURITY_HEADER_BYTES = 14
+
+async def _fake_cortex_server(reader, writer):
+    """Simulates a telemetry front-end: sends two real frames, then closes."""
+    writer.write(bytes.fromhex(FRAME_0_HEX))
+    writer.write(bytes.fromhex(FRAME_1_HEX))
+    await writer.drain()
+    writer.close()
+    await writer.wait_closed()
 
 
-def test_process_two_consecutive_frames_with_spillover():
+def test_tcp_client_decodes_streamed_real_frames():
     """
-    Process two real, consecutive frames end to end, feeding Frame 0's
-    leftover into Frame 1's decoding call. Verifies correct TF header
-    decoding, FECF validation against the real CRC, and that leftover
-    bytes correctly carry a split packet from Frame 0 into Frame 1.
+    Start a local fake CORTEX server, connect our TCP client to it, and
+    verify both real captured frames are decoded correctly, including
+    Space Packet spillover carried across them.
     """
-    frame_0 = bytes.fromhex(FRAME_0_HEX)
-    frame_1 = bytes.fromhex(FRAME_1_HEX)
+    received: list[FrameResult] = []
 
-    result_0 = process_frame(
-        frame_0, [_CADU_SYNC_LAYER], leftover=b"",
-        security_header_bytes=_SECURITY_HEADER_BYTES,
-    )
+    async def on_frame(result: FrameResult) -> None:
+        received.append(result)
 
-    assert result_0.tf_header["spacecraft_id"] == 13
-    assert result_0.trailer["fecf_valid"] is True
-    assert isinstance(result_0.leftover, bytes)
+    async def run_test():
+        server = await asyncio.start_server(_fake_cortex_server, "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
 
-    result_1 = process_frame(
-        frame_1, [_CADU_SYNC_LAYER], leftover=result_0.leftover,
-        security_header_bytes=_SECURITY_HEADER_BYTES,
-    )
+        async with server:
+            client_task = asyncio.create_task(
+                run_tcp_client(
+                    host="127.0.0.1",
+                    port=port,
+                    frame_size=994,
+                    layers=[_CADU_SYNC_LAYER],
+                    on_frame=on_frame,
+                    security_header_bytes=_SECURITY_HEADER_BYTES,
+                )
+            )
+            await asyncio.wait_for(client_task, timeout=2.0)
 
-    assert result_1.tf_header["spacecraft_id"] == 13
-    assert result_1.trailer["fecf_valid"] is True
+    asyncio.run(run_test())
 
-    all_packets = result_0.packets + result_1.packets
+    assert len(received) == 2
+    assert received[0].tf_header["spacecraft_id"] == 13
+    assert received[1].tf_header["spacecraft_id"] == 13
+    assert all(r.trailer["fecf_valid"] for r in received)
 
-    print(f"\n{len(all_packets)} packets extracted:")
-    for i, p in enumerate(all_packets):
-        pus = f"type={p['pus_type']} subtype={p['pus_subtype']}" if p['pus_type'] is not None else "idle/no PUS header"
-        print(f"  [{i}] apid={p['apid']} seq={p['sequence_count']} len={p['packet_length']} {pus}")
+    all_packets = received[0].packets + received[1].packets
     assert len(all_packets) > 0
-    
-    assert len(all_packets) > 0
-    for packet in all_packets:
-        assert "apid" in packet
-        assert len(packet["raw_bytes"]) > 0

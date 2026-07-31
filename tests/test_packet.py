@@ -1,4 +1,4 @@
-from ccsds_tm_decom.packet import extract_space_packets, NO_PACKET_START
+from ccsds_tm_decom.ccsds.packet import extract_space_packets, NO_PACKET_START
 
 
 def test_extract_single_complete_packet():

@@ -1,19 +1,8 @@
-"""
-End-to-end orchestration test using two real, consecutive TM Transfer
-Frames captured from a satellite simulator log (CADU frames, no CORTEX
-wrapping). Both frames have secondary_header_flag=1, meaning a variable-
-length TF Secondary Header plus a mission-specific 14-byte security
-header precede the actual data field. Frame 0 has first_header_pointer=10
-and Frame 1 has first_header_pointer=11 — both non-zero and not
-NO_PACKET_START, meaning each frame's data field starts with leftover
-bytes from a packet that began in the previous frame (genuine spillover).
-"""
-from ccsds_tm_decom.orchestration.decoder import process_frame
+from pathlib import Path
+
+from ccsds_tm_decom.io.batch import process_file
 from ccsds_tm_decom.ground_segment.pipeline import Layer
 
-# Real captured frame: 4-byte CADU sync marker + TF header + secondary
-# header + security header + data field + 4-byte OCF + 2-byte FECF.
-# first_header_pointer = 10.
 FRAME_0_HEX = (
     "1ACFFC1D00D1D596980A03290000FF00AAAAAAAAAAAAAAAAAAAAAAAA0007DEDEDEDEDEDEDEDE08D4C41C02E010031900"
     "0000ECEDEC1882050000000A0644064405F705F70F00000644064405F705F70F00000AA10E46041C0E46038F0E460B2E"
@@ -38,7 +27,6 @@ FRAME_0_HEX = (
     "07DEDEDEDEDEDEDEDE07FFC0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0158E000EA83"
 )
 
-# Real captured frame immediately following Frame 0. first_header_pointer = 11.
 FRAME_1_HEX = (
     "1ACFFC1D00D1D697980B03290000FF00AAAAAAAAAAAAAAAAAAAAAAAA000007DEDEDEDEDEDEDEDE08D4C423004C100319"
     "000000ECEE9F2D9005000000010000ECEE0000000000000812000000010000000004073AB30B413A21D54ABF3505013F"
@@ -63,51 +51,34 @@ FRAME_1_HEX = (
     "000000000000000000000000AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA01A4E400A35A"
 )
 
-# These frames are raw CADU (no CORTEX): just a 4-byte sync marker to strip.
+_SECURITY_HEADER_BYTES = 14
 _CADU_SYNC_LAYER = Layer(name="cadu_sync_marker", header_bytes=4, tail_bytes=0)
 
-# Mission-specific security header following the standard TF Secondary
-# Header, observed in this capture (see conversation history for how this
-# was derived from the secondary header's own length field).
-_SECURITY_HEADER_BYTES = 14
 
-
-def test_process_two_consecutive_frames_with_spillover():
+def test_process_file_with_two_real_frames(tmp_path):
     """
-    Process two real, consecutive frames end to end, feeding Frame 0's
-    leftover into Frame 1's decoding call. Verifies correct TF header
-    decoding, FECF validation against the real CRC, and that leftover
-    bytes correctly carry a split packet from Frame 0 into Frame 1.
+    Write two real, consecutive frames to a raw binary file and verify
+    that process_file decodes both, correctly carrying the Space Packet
+    spillover leftover across the file, matching the behavior already
+    validated frame-by-frame in test_decoder.py.
     """
     frame_0 = bytes.fromhex(FRAME_0_HEX)
     frame_1 = bytes.fromhex(FRAME_1_HEX)
 
-    result_0 = process_frame(
-        frame_0, [_CADU_SYNC_LAYER], leftover=b"",
+    file_path: Path = tmp_path / "raw_frames.bin"
+    file_path.write_bytes(frame_0 + frame_1)
+
+    results = process_file(
+        file_path,
+        frame_size=994,
+        layers=[_CADU_SYNC_LAYER],
         security_header_bytes=_SECURITY_HEADER_BYTES,
     )
 
-    assert result_0.tf_header["spacecraft_id"] == 13
-    assert result_0.trailer["fecf_valid"] is True
-    assert isinstance(result_0.leftover, bytes)
+    assert len(results) == 2
+    assert results[0].tf_header["spacecraft_id"] == 13
+    assert results[1].tf_header["spacecraft_id"] == 13
+    assert all(r.trailer["fecf_valid"] for r in results)
 
-    result_1 = process_frame(
-        frame_1, [_CADU_SYNC_LAYER], leftover=result_0.leftover,
-        security_header_bytes=_SECURITY_HEADER_BYTES,
-    )
-
-    assert result_1.tf_header["spacecraft_id"] == 13
-    assert result_1.trailer["fecf_valid"] is True
-
-    all_packets = result_0.packets + result_1.packets
-
-    print(f"\n{len(all_packets)} packets extracted:")
-    for i, p in enumerate(all_packets):
-        pus = f"type={p['pus_type']} subtype={p['pus_subtype']}" if p['pus_type'] is not None else "idle/no PUS header"
-        print(f"  [{i}] apid={p['apid']} seq={p['sequence_count']} len={p['packet_length']} {pus}")
+    all_packets = results[0].packets + results[1].packets
     assert len(all_packets) > 0
-    
-    assert len(all_packets) > 0
-    for packet in all_packets:
-        assert "apid" in packet
-        assert len(packet["raw_bytes"]) > 0

@@ -6,11 +6,11 @@ across successive frames.
 """
 from dataclasses import dataclass, field
 
-from ccsds_tm_decom.frame import parse_tf_primary_header
-from ccsds_tm_decom.packet import NO_PACKET_START, extract_space_packets
-from ccsds_tm_decom.pipeline import Layer, run_pipeline
-from ccsds_tm_decom.secondary_header import parse_secondary_header_length
-from ccsds_tm_decom.trailer import FECF_LENGTH_BYTES, OCF_LENGTH_BYTES, verify_trailer
+from ccsds_tm_decom.ccsds.frame import parse_tf_primary_header
+from ccsds_tm_decom.ccsds.packet import NO_PACKET_START, extract_space_packets
+from ccsds_tm_decom.ground_segment.pipeline import Layer, run_pipeline
+from ccsds_tm_decom.ccsds.secondary_header import parse_secondary_header_length
+from ccsds_tm_decom.ground_segment.trailer import FECF_LENGTH_BYTES, OCF_LENGTH_BYTES, verify_trailer
 
 _TF_HEADER_SIZE_BYTES = 6
 

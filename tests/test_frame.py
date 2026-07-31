@@ -1,4 +1,4 @@
-from ccsds_tm_decom.frame import parse_tf_primary_header
+from ccsds_tm_decom.ccsds.frame import parse_tf_primary_header
 
 
 def test_parse_tf_primary_header():

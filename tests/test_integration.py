@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from ccsds_tm_decom.frame import parse_tf_primary_header
-from ccsds_tm_decom.pipeline import load_layers, run_pipeline
+from ccsds_tm_decom.ccsds.frame import parse_tf_primary_header
+from ccsds_tm_decom.ground_segment.pipeline import load_layers, run_pipeline
 
 _LAYERS_PATH = Path(__file__).parent.parent / "src" / "ccsds_tm_decom" / "schemas" / "ground_segment_layers.json"
 
