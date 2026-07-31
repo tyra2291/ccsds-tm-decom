@@ -10,6 +10,7 @@ frame's data field before extraction continues.
 from pathlib import Path
 
 from ccsds_tm_decom.generic_decoder import decode_fields, load_schema
+from ccsds_tm_decom.pus import parse_pus_header
 
 _SCHEMA_PATH = Path(__file__).parent / "schemas" / "space_packet_header.json"
 _SCHEMA = load_schema(_SCHEMA_PATH)
@@ -63,7 +64,17 @@ def extract_space_packets(data_field: bytes, first_header_pointer: int) -> tuple
             break  # packet continues beyond this frame: leftover
 
         packet_bytes = data_field[offset:packet_end]
-        packets.append({**header, "raw_bytes": packet_bytes})
+        if header["secondary_header_flag"]:
+            pus_header = parse_pus_header(packet_bytes[_HEADER_SIZE_BYTES:])
+            packets.append({
+                **header,
+                "raw_bytes": packet_bytes,
+                "pus_type": pus_header["service_type"],
+                "pus_subtype": pus_header["service_subtype"],
+            })
+        else:
+            packets.append({**header, "raw_bytes": packet_bytes, "pus_type": None, "pus_subtype": None})
+
         offset = packet_end
 
     leftover = data_field[offset:]

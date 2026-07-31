@@ -1,0 +1,9 @@
+{
+  "name": "pus_secondary_header",
+  "fields": [
+    {"name": "pus_version", "bits": 4},
+    {"name": "ack_flags", "bits": 4},
+    {"name": "service_type", "bits": 8},
+    {"name": "service_subtype", "bits": 8}
+  ]
+}
