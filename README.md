@@ -43,3 +43,30 @@ The following are planned but **not yet implemented**:
 - PUS-level packet decoding
 - TCP listener for real-time, multi-satellite ingestion
 - Persistent storage (PostgreSQL) of decoded frames/packets
+
+## Design notes & current limitations
+
+This decoder is generic within CCSDS/PUS, not protocol-agnostic beyond it.
+Concretely:
+
+- `generic_decoder.py` (bitfield extraction) and `pipeline.py` (ground
+  segment layer stripping) are truly protocol-agnostic: field sizes,
+  names, and wrapper sizes are all schema/config-driven.
+- `decoder.py` and `packet.py`, however, assume a fixed protocol stack:
+  CCSDS TM Transfer Frame → CCSDS Space Packet → PUS secondary header.
+  The decoding logic itself (not just field sizes) is written in Python
+  for this specific stack.
+
+In practice, this means:
+- Different field sizes, different CORTEX/CADU wrapper configurations, or
+  different missions using the same CCSDS/PUS stack are supported purely
+  through JSON configuration, with no code changes.
+- A mission using CCSDS without PUS (a different or proprietary secondary
+  header format), or a non-CCSDS protocol entirely, would require changes
+  to `decoder.py` and `packet.py`, not just configuration.
+
+This was a deliberate scope decision: building a fully protocol-agnostic
+framework (pluggable handlers for arbitrary secondary header formats and
+packet extraction logic) would add significant complexity for a use case
+that, so far, only needs to support CCSDS/PUS across different missions
+and ground segment configurations.
