@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ccsds
+      POSTGRES_PASSWORD: ccsds_dev_password
+      POSTGRES_DB: ccsds_tm_decom
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
