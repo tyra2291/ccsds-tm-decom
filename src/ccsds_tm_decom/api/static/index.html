@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>ccsds-tm-decom</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; }
+  select, input, button { padding: 0.4rem; margin-right: 0.5rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
+  th { background: #f0f0f0; }
+</style>
+</head>
+<body>
+  <h1>Sessions de télémesure</h1>
+  <select id="sessionSelect"></select>
+
+  <h2>Paquets</h2>
+  <div>
+    <input id="apidFilter" type="number" placeholder="APID">
+    <input id="pusTypeFilter" type="number" placeholder="PUS type">
+    <input id="pusSubtypeFilter" type="number" placeholder="PUS sous-type">
+    <button onclick="loadPackets()">Filtrer</button>
+  </div>
+  <table id="packetsTable">
+    <thead>
+      <tr><th>ID</th><th>Satellite</th><th>APID</th><th>Seq</th><th>Longueur</th><th>PUS type</th><th>PUS sous-type</th><th>Reçu à</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+async function loadSessions() {
+  const res = await fetch('/api/sessions');
+  const sessions = await res.json();
+  const select = document.getElementById('sessionSelect');
+  select.innerHTML = sessions.map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
+  if (sessions.length > 0) loadPackets();
+}
+
+async function loadPackets() {
+  const sessionId = document.getElementById('sessionSelect').value;
+  if (!sessionId) return;
+
+  const params = new URLSearchParams();
+  const apid = document.getElementById('apidFilter').value;
+  const pusType = document.getElementById('pusTypeFilter').value;
+  const pusSubtype = document.getElementById('pusSubtypeFilter').value;
+  if (apid) params.set('apid', apid);
+  if (pusType) params.set('pus_type', pusType);
+  if (pusSubtype) params.set('pus_subtype', pusSubtype);
+
+  const res = await fetch(`/api/sessions/${sessionId}/packets?${params}`);
+  const packets = await res.json();
+
+  const tbody = document.querySelector('#packetsTable tbody');
+  tbody.innerHTML = packets.map(p => `
+    <tr>
+      <td>${p.id}</td>
+      <td>${p.spacecraft_id}</td>
+      <td>${p.apid}</td>
+      <td>${p.sequence_count}</td>
+      <td>${p.packet_length}</td>
+      <td>${p.pus_type ?? '-'}</td>
+      <td>${p.pus_subtype ?? '-'}</td>
+      <td>${new Date(p.received_at).toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
+
+document.getElementById('sessionSelect').addEventListener('change', loadPackets);
+loadSessions();
+</script>
+</body>
+</html>
