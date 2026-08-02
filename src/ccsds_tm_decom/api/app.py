@@ -241,5 +241,14 @@ async def list_packets(
             results.append(item)
         return results
 
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: int):
+    """
+    Delete a session and all its frames/packets (cascading delete via
+    the foreign key ON DELETE CASCADE).
+    """
+    async with app.state.pool.acquire() as conn:
+        await conn.execute("DELETE FROM sessions WHERE id = $1", session_id)
+    return {"deleted": session_id}
 
 app.mount("/", StaticFiles(directory="src/ccsds_tm_decom/api/static", html=True), name="static")

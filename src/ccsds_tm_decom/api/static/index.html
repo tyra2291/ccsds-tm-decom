@@ -252,6 +252,7 @@
     <div class="rename-row">
       <input type="text" id="renameInput" placeholder="New session name">
       <button class="secondary" onclick="renameSession()">Rename</button>
+      <button class="secondary" style="border-color: var(--red); color: var(--red);" onclick="deleteSession()">Delete session</button>
     </div>
   </section>
 
@@ -385,7 +386,10 @@ function showSessionInfo() {
   stopStatusPolling();
   if (s.connection_type === 'tcp' && !s.ended_at) {
     pollStatus(s.id);
-    statusPollTimer = setInterval(() => pollStatus(s.id), 2000);
+    statusPollTimer = setInterval(() => {
+      pollStatus(s.id);
+      loadPackets();
+    }, 2000);
   }
 }
 
@@ -426,6 +430,18 @@ async function renameSession() {
   });
 
   document.getElementById('renameInput').value = '';
+  await loadSessions();
+}
+
+async function deleteSession() {
+  const sessionId = document.getElementById('sessionSelect').value;
+  if (!sessionId) return;
+
+  const s = sessions.find(x => String(x.id) === String(sessionId));
+  const confirmed = confirm(`Delete session "${s.name}" and all its ${s.connection_type === 'tcp' ? 'received' : 'decoded'} data? This cannot be undone.`);
+  if (!confirmed) return;
+
+  await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
   await loadSessions();
 }
 
