@@ -1,0 +1,14 @@
+{
+  "frame_size": 1224,
+  "security_header_bytes": 14,
+  "layers": [
+    {
+      "name": "cortex_wrapper",
+      "header_bytes": 64,
+      "tail_bytes": 4,
+      "expected_tail_hex": "B669FD2E",
+      "inner_frame_length": 994
+    },
+    {"name": "cadu_sync_marker", "header_bytes": 4, "tail_bytes": 0}
+  ]
+}

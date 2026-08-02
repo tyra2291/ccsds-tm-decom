@@ -1,0 +1,5 @@
+{
+  "layers": [
+    {"name": "cadu_sync_marker", "header_bytes": 4, "tail_bytes": 0}
+  ]
+}

@@ -6,7 +6,7 @@ connection or one processed file).
 import asyncpg
 
 from ccsds_tm_decom.orchestration.decoder import FrameResult
-
+from functools import partial
 
 async def create_pool(dsn: str) -> asyncpg.Pool:
     """
@@ -106,3 +106,20 @@ async def store_frame_result(pool: asyncpg.Pool, session_id: int, result: FrameR
                     packet["pus_subtype"],
                     packet["raw_bytes"],
                 )
+                from functools import partial
+
+
+def make_storage_callback(pool: asyncpg.Pool, session_id: int):
+    """
+    Build an `on_frame` callback (see io.tcp_client, io.batch) that
+    stores each decoded FrameResult under the given session.
+
+    Args:
+        pool: An active asyncpg connection pool.
+        session_id: The session to link stored frames to (see start_session).
+
+    Returns:
+        An async callable taking a single FrameResult argument, suitable
+        for use as `on_frame` in run_tcp_client or process_file.
+    """
+    return partial(store_frame_result, pool, session_id)

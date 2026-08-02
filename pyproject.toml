@@ -24,3 +24,6 @@ dev = [
 
 [tool.poetry]
 packages = [{include = "ccsds_tm_decom", from = "src"}]
+
+[project.scripts]
+ccsds-tm-decom = "ccsds_tm_decom.main:main"

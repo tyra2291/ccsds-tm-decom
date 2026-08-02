@@ -1,0 +1,7 @@
+{
+  "frame_size": 994,
+  "security_header_bytes": 14,
+  "layers": [
+    {"name": "cadu_sync_marker", "header_bytes": 4, "tail_bytes": 0}
+  ]
+}
