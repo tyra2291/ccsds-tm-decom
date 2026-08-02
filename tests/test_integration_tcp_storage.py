@@ -93,7 +93,8 @@ def test_tcp_client_stores_decoded_frames_in_database():
                     await conn.execute(_SCHEMA_PATH.read_text())
 
                 session_id = await start_session(
-                    pool, name="integration-test", source="tcp:fake-cortex"
+                    pool, name="integration-test", connection_type="tcp",
+                    mission_name="cadu-only", host="fake-cortex", port=0,
                 )
                 storage_callback = make_storage_callback(pool, session_id)
 

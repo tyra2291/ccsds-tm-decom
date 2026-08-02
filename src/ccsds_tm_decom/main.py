@@ -57,8 +57,25 @@ async def _run(args: argparse.Namespace) -> None:
 
     if args.session_name:
         pool = await create_pool(args.dsn)
-        source = f"tcp:{args.host}:{args.port}" if args.mode == "tcp" else f"file:{args.path}"
-        session_id = await start_session(pool, name=args.session_name, source=source)
+
+        if args.mode == "tcp":
+            session_id = await start_session(
+                pool,
+                name=args.session_name,
+                connection_type="tcp",
+                mission_name=mission.name,
+                host=args.host,
+                port=args.port,
+            )
+        else:
+            session_id = await start_session(
+                pool,
+                name=args.session_name,
+                connection_type="file",
+                mission_name=mission.name,
+                file_path=str(args.path),
+            )
+
         print(f"Session '{args.session_name}' started (id={session_id})")
         on_frame = make_storage_callback(pool, session_id)
 

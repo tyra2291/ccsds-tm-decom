@@ -23,12 +23,14 @@ class MissionConfig:
     Complete decoding configuration for one mission/ground segment setup.
 
     Attributes:
+        name: Human-readable mission name (e.g. "CADU brut (sans CORTEX)").
         frame_size: Exact byte size of each raw incoming frame.
         security_header_bytes: Mission-specific security header size (see
             orchestration.decoder.process_frame).
         layers: Ordered list of ground segment layers to strip (see
             ground_segment.pipeline.run_pipeline).
     """
+    name: str
     frame_size: int
     security_header_bytes: int
     layers: list[Layer]
@@ -38,21 +40,12 @@ def load_mission_config(path: str | Path) -> MissionConfig:
     """
     Load a mission configuration from a JSON file.
 
-    Expected JSON shape:
-        {
-          "frame_size": 994,
-          "security_header_bytes": 14,
-          "layers": [
-            {"name": "...", "header_bytes": ..., "tail_bytes": ..., ...}
-          ]
-        }
-
     Args:
         path: Path to the mission config JSON file.
 
     Returns:
-        A populated MissionConfig. security_header_bytes defaults to 0
-        if omitted from the JSON (missions with no such field).
+        A populated MissionConfig. security_header_bytes defaults to 0,
+        and name defaults to the filename stem, if omitted from the JSON.
     """
     with open(path) as f:
         raw = json.load(f)
@@ -60,6 +53,7 @@ def load_mission_config(path: str | Path) -> MissionConfig:
     layers = [Layer(**layer) for layer in raw["layers"]]
 
     return MissionConfig(
+        name=raw.get("name", Path(path).stem),
         frame_size=raw["frame_size"],
         security_header_bytes=raw.get("security_header_bytes", 0),
         layers=layers,

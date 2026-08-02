@@ -29,7 +29,10 @@ def test_store_frame_result_persists_frame_and_packets():
                 async with pool.acquire() as conn:
                     await conn.execute(_SCHEMA_PATH.read_text())
 
-                session_id = await start_session(pool, name="test-session", source="unit-test")
+                session_id = await start_session(
+                pool, name="test-session", connection_type="tcp",
+                mission_name="test-mission", host="127.0.0.1", port=9999,
+                )
 
                 result = FrameResult(
                     tf_header={

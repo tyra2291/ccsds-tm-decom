@@ -1,12 +1,18 @@
 CREATE TABLE IF NOT EXISTS sessions (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
+    connection_type TEXT NOT NULL,  -- 'tcp' or 'file'
+    host TEXT,
+    port INTEGER,
+    file_path TEXT,
+    mission_name TEXT NOT NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ended_at TIMESTAMPTZ,
-    source TEXT NOT NULL  -- e.g. "tcp:host:port" or "file:path"
+    ended_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions (name);
+CREATE INDEX IF NOT EXISTS idx_sessions_mission_name ON sessions (mission_name);
+CREATE INDEX IF NOT EXISTS idx_sessions_host ON sessions (host);
 
 CREATE TABLE IF NOT EXISTS frames (
     id BIGSERIAL PRIMARY KEY,

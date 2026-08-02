@@ -1,4 +1,5 @@
 {
+  "name": "CORTEX + CADU",
   "frame_size": 1224,
   "security_header_bytes": 14,
   "layers": [

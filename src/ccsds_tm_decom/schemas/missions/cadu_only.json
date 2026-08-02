@@ -1,4 +1,5 @@
 {
+  "name": "CADU brut (sans CORTEX)",
   "frame_size": 994,
   "security_header_bytes": 14,
   "layers": [

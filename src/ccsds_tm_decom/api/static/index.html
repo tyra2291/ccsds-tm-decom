@@ -1,41 +1,432 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ccsds-tm-decom</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 2rem; }
-  select, input, button { padding: 0.4rem; margin-right: 0.5rem; }
-  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-  th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.9rem; }
-  th { background: #f0f0f0; }
+  :root {
+    --bg: #0d1117;
+    --bg-panel: #161b22;
+    --bg-hover: #1c2330;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-soft: rgba(88, 166, 255, 0.12);
+    --green: #3fb950;
+    --red: #f85149;
+    --orange: #d29922;
+    --mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 0 0 4rem;
+  }
+
+  header {
+    padding: 2rem 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  header h1 { margin: 0; font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; }
+  header p { margin: 0.3rem 0 0; color: var(--text-dim); font-size: 0.9rem; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 2.5rem; }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .panel h2 {
+    margin: 0 0 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+
+  select, input, button {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+
+  select { min-width: 200px; }
+  input[type="text"], input[type="number"] { width: 160px; }
+  input::placeholder { color: var(--text-dim); }
+
+  label.checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+  }
+
+  button {
+    background: var(--accent);
+    color: #0d1117;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  button:hover { opacity: 0.85; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+
+  .session-info {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+
+  .session-info strong { color: var(--text); }
+
+  .live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+
+  .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 1.5s infinite; }
+  .dot.stale { background: var(--orange); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .rename-row, .upload-row { display: flex; gap: 0.6rem; margin-top: 0.75rem; flex-wrap: wrap; align-items: center; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+
+  thead th {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    color: var(--text-dim);
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  tbody tr { cursor: pointer; transition: background 0.1s; }
+  tbody tr:hover { background: var(--bg-hover); }
+  tbody td { padding: 0.65rem 0.8rem; border-bottom: 1px solid var(--border); }
+  tbody tr.idle-row { opacity: 0.55; }
+
+  .badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 0.15rem 0.5rem;
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+
+  .badge.idle { background: rgba(139, 148, 158, 0.15); color: var(--text-dim); }
+
+  .empty-state { color: var(--text-dim); text-align: center; padding: 2rem; font-size: 0.9rem; }
+
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: min(700px, 90vw);
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 1.75rem;
+  }
+
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+  .modal-header h3 { margin: 0; font-size: 1.1rem; }
+
+  .modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .modal-close:hover { color: var(--text); }
+
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.5rem; margin-bottom: 1.25rem; }
+  .field-grid .field-label { color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 0.15rem; }
+  .field-grid .field-value { font-family: var(--mono); font-size: 0.95rem; }
+
+  .hex-dump {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+    word-break: break-all;
+    color: #a5d6ff;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .hint { font-size: 0.78rem; color: var(--text-dim); margin-top: 0.4rem; }
 </style>
 </head>
 <body>
-  <h1>Sessions de télémesure</h1>
-  <select id="sessionSelect"></select>
 
-  <h2>Paquets</h2>
-  <div>
-    <input id="apidFilter" type="number" placeholder="APID">
-    <input id="pusTypeFilter" type="number" placeholder="PUS type">
-    <input id="pusSubtypeFilter" type="number" placeholder="PUS sous-type">
-    <button onclick="loadPackets()">Filtrer</button>
+<header>
+  <h1>ccsds-tm-decom</h1>
+  <p>CCSDS/PUS satellite telemetry decommutator</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>Upload a file</h2>
+    <div class="upload-row">
+      <input type="file" id="uploadFile">
+      <select id="uploadMission"></select>
+      <input type="text" id="uploadSessionName" placeholder="Session name">
+      <button onclick="uploadFile()">Upload</button>
+    </div>
+    <div id="uploadStatus" class="hint"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Session</h2>
+    <div class="filters">
+      <select id="sessionSelect"></select>
+      <input type="text" id="missionFilter" placeholder="Filter by mission">
+      <input type="text" id="hostFilter" placeholder="Filter by host">
+      <button onclick="loadSessions()">Filter</button>
+    </div>
+    <div id="sessionInfo" class="session-info">No session selected.</div>
+    <div class="rename-row">
+      <input type="text" id="renameInput" placeholder="New session name">
+      <button class="secondary" onclick="renameSession()">Rename</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Packets</h2>
+    <div class="filters">
+      <input type="text" id="apidFilter" placeholder="APID (e.g. 212,161)">
+      <input type="text" id="pusTypeFilter" placeholder="PUS type (e.g. 1,3)">
+      <input type="text" id="pusSubtypeFilter" placeholder="PUS subtype (e.g. 1,25)">
+      <input type="text" id="satelliteFilter" placeholder="Spacecraft (e.g. 13,14)">
+      <label class="checkbox"><input type="checkbox" id="excludeIdle"> Hide idle packets</label>
+      <button onclick="loadPackets()">Filter</button>
+    </div>
+    <div class="hint">Use comma-separated values to filter on several at once.</div>
+  </section>
+
+  <section class="panel">
+    <table id="packetsTable">
+      <thead>
+        <tr>
+          <th>ID</th><th>Spacecraft</th><th>APID</th><th>Sequence</th>
+          <th>Length</th><th>PUS</th><th>Received at</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div id="emptyState" class="empty-state" style="display:none;">No packets match these filters.</div>
+  </section>
+</main>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Packet detail</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="field-grid" id="modalFields"></div>
+    <div class="field-label">Raw content (hex)</div>
+    <div class="hex-dump" id="modalHex"></div>
   </div>
-  <table id="packetsTable">
-    <thead>
-      <tr><th>ID</th><th>Satellite</th><th>APID</th><th>Seq</th><th>Longueur</th><th>PUS type</th><th>PUS sous-type</th><th>Reçu à</th></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+</div>
 
 <script>
+let sessions = [];
+let currentPackets = [];
+let statusPollTimer = null;
+
+function parseIntList(value) {
+  if (!value.trim()) return [];
+  return value.split(',').map(v => v.trim()).filter(v => v.length > 0);
+}
+
+async function loadMissions() {
+  const res = await fetch('/api/missions');
+  const missions = await res.json();
+  document.getElementById('uploadMission').innerHTML =
+    missions.map(m => `<option value="${m.filename}">${m.name}</option>`).join('');
+}
+
+async function uploadFile() {
+  const fileInput = document.getElementById('uploadFile');
+  const mission = document.getElementById('uploadMission').value;
+  const sessionName = document.getElementById('uploadSessionName').value.trim();
+  const statusEl = document.getElementById('uploadStatus');
+
+  if (!fileInput.files.length || !sessionName) {
+    statusEl.textContent = 'Select a file and a session name.';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  formData.append('mission_config', mission);
+  formData.append('session_name', sessionName);
+
+  statusEl.textContent = 'Decoding...';
+  const res = await fetch('/api/upload', { method: 'POST', body: formData });
+
+  if (!res.ok) {
+    statusEl.textContent = 'Upload failed.';
+    return;
+  }
+
+  const result = await res.json();
+  statusEl.textContent = `${result.frames_decoded} frames decoded, session #${result.session_id} created.`;
+  document.getElementById('uploadSessionName').value = '';
+  await loadSessions();
+}
+
 async function loadSessions() {
-  const res = await fetch('/api/sessions');
-  const sessions = await res.json();
+  const params = new URLSearchParams();
+  const mission = document.getElementById('missionFilter').value;
+  const host = document.getElementById('hostFilter').value;
+  if (mission) params.set('mission_name', mission);
+  if (host) params.set('host', host);
+
+  const res = await fetch(`/api/sessions?${params}`);
+  sessions = await res.json();
+
   const select = document.getElementById('sessionSelect');
-  select.innerHTML = sessions.map(s => `<option value="${s.id}">${s.name} (${s.id})</option>`).join('');
-  if (sessions.length > 0) loadPackets();
+  select.innerHTML = sessions.map(s => `<option value="${s.id}">${s.name} — session #${s.id}</option>`).join('');
+
+  if (sessions.length > 0) {
+    showSessionInfo();
+    loadPackets();
+  } else {
+    document.getElementById('sessionInfo').textContent = 'No session matches these filters.';
+    document.querySelector('#packetsTable tbody').innerHTML = '';
+    stopStatusPolling();
+  }
+}
+
+function showSessionInfo() {
+  const sessionId = document.getElementById('sessionSelect').value;
+  const s = sessions.find(x => String(x.id) === String(sessionId));
+  if (!s) return;
+
+  const connDetail = s.connection_type === 'tcp' ? `${s.host}:${s.port}` : s.file_path;
+  const statusHtml = s.ended_at
+    ? `<strong>Ended:</strong> ${new Date(s.ended_at).toLocaleString('en-US')}`
+    : `<span id="liveIndicator" class="live-indicator"><span class="dot" id="liveDot"></span><span id="liveText">…</span></span>`;
+
+  document.getElementById('sessionInfo').innerHTML = `
+    <strong>Mission:</strong> ${s.mission_name} &nbsp;|&nbsp;
+    <strong>Type:</strong> ${s.connection_type} &nbsp;|&nbsp;
+    <strong>Source:</strong> ${connDetail} &nbsp;|&nbsp;
+    <strong>Started:</strong> ${new Date(s.started_at).toLocaleString('en-US')} &nbsp;|&nbsp;
+    ${statusHtml}
+  `;
+
+  stopStatusPolling();
+  if (s.connection_type === 'tcp' && !s.ended_at) {
+    pollStatus(s.id);
+    statusPollTimer = setInterval(() => pollStatus(s.id), 2000);
+  }
+}
+
+function stopStatusPolling() {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+  }
+}
+
+async function pollStatus(sessionId) {
+  const res = await fetch(`/api/sessions/${sessionId}/status`);
+  if (!res.ok) return;
+  const status = await res.json();
+
+  const dot = document.getElementById('liveDot');
+  const text = document.getElementById('liveText');
+  if (!dot || !text) return;
+
+  if (status.is_receiving) {
+    dot.className = 'dot live';
+    text.textContent = `Receiving TM — ${status.frames_per_second} frames/s`;
+  } else {
+    dot.className = 'dot stale';
+    text.textContent = 'No TM received recently';
+  }
+}
+
+async function renameSession() {
+  const sessionId = document.getElementById('sessionSelect').value;
+  const newName = document.getElementById('renameInput').value.trim();
+  if (!sessionId || !newName) return;
+
+  await fetch(`/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: newName }),
+  });
+
+  document.getElementById('renameInput').value = '';
+  await loadSessions();
 }
 
 async function loadPackets() {
@@ -43,33 +434,75 @@ async function loadPackets() {
   if (!sessionId) return;
 
   const params = new URLSearchParams();
-  const apid = document.getElementById('apidFilter').value;
-  const pusType = document.getElementById('pusTypeFilter').value;
-  const pusSubtype = document.getElementById('pusSubtypeFilter').value;
-  if (apid) params.set('apid', apid);
-  if (pusType) params.set('pus_type', pusType);
-  if (pusSubtype) params.set('pus_subtype', pusSubtype);
+  parseIntList(document.getElementById('apidFilter').value).forEach(v => params.append('apid', v));
+  parseIntList(document.getElementById('pusTypeFilter').value).forEach(v => params.append('pus_type', v));
+  parseIntList(document.getElementById('pusSubtypeFilter').value).forEach(v => params.append('pus_subtype', v));
+  parseIntList(document.getElementById('satelliteFilter').value).forEach(v => params.append('spacecraft_id', v));
+  if (document.getElementById('excludeIdle').checked) params.set('exclude_idle', 'true');
 
   const res = await fetch(`/api/sessions/${sessionId}/packets?${params}`);
-  const packets = await res.json();
+  currentPackets = await res.json();
 
   const tbody = document.querySelector('#packetsTable tbody');
-  tbody.innerHTML = packets.map(p => `
-    <tr>
+  const emptyState = document.getElementById('emptyState');
+
+  if (currentPackets.length === 0) {
+    tbody.innerHTML = '';
+    emptyState.style.display = 'block';
+    return;
+  }
+  emptyState.style.display = 'none';
+
+  tbody.innerHTML = currentPackets.map((p, i) => `
+    <tr onclick="openModal(${i})" class="${p.is_idle ? 'idle-row' : ''}">
       <td>${p.id}</td>
       <td>${p.spacecraft_id}</td>
-      <td>${p.apid}</td>
+      <td><span class="badge">${p.apid}</span></td>
       <td>${p.sequence_count}</td>
-      <td>${p.packet_length}</td>
-      <td>${p.pus_type ?? '-'}</td>
-      <td>${p.pus_subtype ?? '-'}</td>
-      <td>${new Date(p.received_at).toLocaleString()}</td>
+      <td>${p.packet_length} B</td>
+      <td>${p.is_idle
+          ? '<span class="badge idle">IDLE</span>'
+          : (p.pus_type != null ? p.pus_type + '/' + p.pus_subtype : '—')}</td>
+      <td>${new Date(p.received_at).toLocaleString('en-US')}</td>
     </tr>
   `).join('');
 }
 
-document.getElementById('sessionSelect').addEventListener('change', loadPackets);
+function openModal(index) {
+  const p = currentPackets[index];
+  document.getElementById('modalFields').innerHTML = `
+    <div><div class="field-label">Packet ID</div><div class="field-value">${p.id}</div></div>
+    <div><div class="field-label">Frame ID</div><div class="field-value">${p.frame_id}</div></div>
+    <div><div class="field-label">Spacecraft</div><div class="field-value">${p.spacecraft_id}</div></div>
+    <div><div class="field-label">APID</div><div class="field-value">${p.apid}${p.is_idle ? ' (Idle Packet)' : ''}</div></div>
+    <div><div class="field-label">Sequence count</div><div class="field-value">${p.sequence_count}</div></div>
+    <div><div class="field-label">Length</div><div class="field-value">${p.packet_length} bytes</div></div>
+    <div><div class="field-label">PUS type / subtype</div><div class="field-value">${p.pus_type != null ? p.pus_type + ' / ' + p.pus_subtype : '—'}</div></div>
+    <div><div class="field-label">Received at</div><div class="field-value">${new Date(p.received_at).toLocaleString('en-US')}</div></div>
+  `;
+
+  const hex = p.raw_bytes.match(/.{1,2}/g).join(' ');
+  document.getElementById('modalHex').textContent = hex;
+
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function closeModalOnOverlay(event) {
+  if (event.target.id === 'modalOverlay') closeModal();
+}
+
+document.getElementById('sessionSelect').addEventListener('change', () => {
+  showSessionInfo();
+  loadPackets();
+});
+
+loadMissions();
 loadSessions();
 </script>
+
 </body>
 </html>
