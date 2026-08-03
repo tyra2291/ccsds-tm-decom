@@ -9,6 +9,46 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ccsds"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://ccsds:ccsds_dev_password@postgres:5432/ccsds_tm_decom
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  fake-server:
+    build: .
+    command: ["python3", "fake_stream_server.py"]
+    profiles: ["demo"]
+    volumes:
+      - ./tests/fixtures:/app/tests/fixtures
+      - ./fake_stream_server.py:/app/fake_stream_server.py
+
+  decoder:
+    build: .
+    command: [
+      "ccsds-tm-decom",
+      "--mission-config", "src/ccsds_tm_decom/schemas/missions/cadu_only.json",
+      "--session-name", "docker-demo",
+      "--dsn", "postgresql://ccsds:ccsds_dev_password@postgres:5432/ccsds_tm_decom",
+      "tcp", "--host", "fake-server", "--port", "9999",
+    ]
+    profiles: ["demo"]
+    restart: on-failure:5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fake-server:
+        condition: service_started
 
 volumes:
   postgres_data:

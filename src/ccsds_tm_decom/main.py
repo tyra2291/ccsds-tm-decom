@@ -5,6 +5,7 @@ persisting results to PostgreSQL under a named acquisition session.
 """
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 from ccsds_tm_decom.ground_segment.mission_config import load_mission_config
@@ -23,7 +24,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--session-name", help="Session name; enables PostgreSQL storage if provided")
     parser.add_argument(
         "--dsn",
-        default="postgresql://ccsds:ccsds_dev_password@localhost:5432/ccsds_tm_decom",
+        default=os.environ.get(
+            "DATABASE_URL",
+            "postgresql://ccsds:ccsds_dev_password@localhost:5432/ccsds_tm_decom",
+        ),
         help="PostgreSQL connection string (only used if --session-name is set)",
     )
 

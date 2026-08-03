@@ -8,6 +8,7 @@ import datetime
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+import os
 
 import asyncpg
 from fastapi import FastAPI, File, Form, Query, UploadFile
@@ -18,7 +19,12 @@ from ccsds_tm_decom.ground_segment.mission_config import load_mission_config
 from ccsds_tm_decom.io.batch import process_file
 from ccsds_tm_decom.io.storage import end_session, start_session, store_frame_result
 
-DSN = "postgresql://ccsds:ccsds_dev_password@localhost:5432/ccsds_tm_decom"
+import os
+
+DSN = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://ccsds:ccsds_dev_password@localhost:5432/ccsds_tm_decom",
+)
 MISSIONS_DIR = Path("src/ccsds_tm_decom/schemas/missions")
 IDLE_APID = 2047
 

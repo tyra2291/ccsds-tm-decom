@@ -23,8 +23,8 @@ async def handle_client(reader, writer):
     await writer.wait_closed()
 
 async def main():
-    server = await asyncio.start_server(handle_client, "127.0.0.1", 9999)
-    print("Fake telemetry server listening on 127.0.0.1:9999")
+    server = await asyncio.start_server(handle_client, "0.0.0.0", 9999)
+    print("Fake telemetry server listening on 0.0.0.0:9999")
     async with server:
         await server.serve_forever()
 

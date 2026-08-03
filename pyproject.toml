@@ -26,6 +26,10 @@ dev = [
 ]
 
 [tool.poetry]
+name = "ccsds-tm-decom"
+version = "0.1.0"
+description = "CCSDS TM frame decommutator"
+authors = ["Benoit Hassan"]
 packages = [{include = "ccsds_tm_decom", from = "src"}]
 
 [project.scripts]
