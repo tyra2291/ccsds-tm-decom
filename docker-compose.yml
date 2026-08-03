@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ccsds"]
+      test: ["CMD-SHELL", "pg_isready -U ccsds -d ccsds_tm_decom"]
       interval: 5s
       timeout: 5s
       retries: 5
