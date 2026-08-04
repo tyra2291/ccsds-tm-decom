@@ -48,31 +48,26 @@ def process_file(
     layers: list[Layer],
     security_header_bytes: int = 0,
 ) -> list[FrameResult]:
-    """
-    Decode every frame in a raw binary file end to end, carrying Space
-    Packet spillover leftover across frame boundaries throughout the file.
-
-    Args:
-        path: Path to the binary file containing back-to-back frames.
-        frame_size: Exact byte size of each frame.
-        layers: Ordered list of Layer objects for ground segment stripping
-            (see pipeline.load_layers). Pass an empty list if frames have
-            no ground segment wrapper (e.g. already-stripped CADU).
-        security_header_bytes: Mission-specific security header size, if
-            secondary_header_flag is set (see decoder.process_frame).
-
-    Returns:
-        A list of FrameResult, one per frame in file order.
-    """
     results: list[FrameResult] = []
     leftover = b""
+    skipped_count = 0
 
-    for raw_frame in iter_frames_from_file(path, frame_size):
-        result = process_frame(
-            raw_frame, layers, leftover=leftover,
-            security_header_bytes=security_header_bytes,
-        )
+    for i, raw_frame in enumerate(iter_frames_from_file(path, frame_size)):
+        try:
+            result = process_frame(
+                raw_frame, layers, leftover=leftover,
+                security_header_bytes=security_header_bytes,
+            )
+        except ValueError as e:
+            print(f"Warning: skipping malformed frame #{i}: {e}")
+            skipped_count += 1
+            leftover = b""  # reset: can't trust leftover after a decode failure
+            continue
+
         results.append(result)
         leftover = result.leftover
+
+    if skipped_count:
+        print(f"Warning: {skipped_count} frame(s) skipped due to decode errors")
 
     return results

@@ -50,27 +50,31 @@ def extract_space_packets(data_field: bytes, first_header_pointer: int) -> tuple
     while offset < len(data_field):
         header_bytes = data_field[offset:offset + _HEADER_SIZE_BYTES]
         if len(header_bytes) < _HEADER_SIZE_BYTES:
-            break  # not enough bytes left for even a full header: leftover
+            break
 
-        header = decode_fields(header_bytes, _SCHEMA)
+        try:
+            header = decode_fields(header_bytes, _SCHEMA)
+        except ValueError:
+            break  # malformed data (likely wrong mission config): stop here, rest becomes leftover
 
-        # Per CCSDS convention, packet_data_length = (data length - 1),
-        # so total packet size = header (6) + packet_data_length + 1
         total_packet_length = _HEADER_SIZE_BYTES + header["packet_length"] + 1
         packet_end = offset + total_packet_length
 
         if packet_end > len(data_field):
-            break  # packet continues beyond this frame: leftover
+            break
 
         packet_bytes = data_field[offset:packet_end]
         if header["secondary_header_flag"]:
-            pus_header = parse_pus_header(packet_bytes[_HEADER_SIZE_BYTES:])
-            packets.append({
-                **header,
-                "raw_bytes": packet_bytes,
-                "pus_type": pus_header["service_type"],
-                "pus_subtype": pus_header["service_subtype"],
-            })
+            try:
+                pus_header = parse_pus_header(packet_bytes[_HEADER_SIZE_BYTES:])
+                packets.append({
+                    **header,
+                    "raw_bytes": packet_bytes,
+                    "pus_type": pus_header["service_type"],
+                    "pus_subtype": pus_header["service_subtype"],
+                })
+            except ValueError:
+                break  # malformed PUS header: stop here too
         else:
             packets.append({**header, "raw_bytes": packet_bytes, "pus_type": None, "pus_subtype": None})
 
@@ -78,3 +82,24 @@ def extract_space_packets(data_field: bytes, first_header_pointer: int) -> tuple
 
     leftover = data_field[offset:]
     return packets, leftover
+
+def decode_packet_header_only(header_bytes: bytes) -> dict | None:
+    """
+    Decode a Space Packet primary header without raising on malformed
+    input — returns None instead, for tools like the byte inspector that
+    need to tolerate bad data gracefully.
+
+    Args:
+        header_bytes: Exactly 6 bytes (or fewer, which is treated as
+            insufficient and returns None).
+
+    Returns:
+        The decoded header dict, or None if header_bytes is too short or
+        otherwise fails to decode.
+    """
+    if len(header_bytes) < _HEADER_SIZE_BYTES:
+        return None
+    try:
+        return decode_fields(header_bytes, _SCHEMA)
+    except ValueError:
+        return None
