@@ -151,6 +151,12 @@
   tbody tr:hover { background: var(--bg-hover); }
   tbody td { padding: 0.65rem 0.8rem; border-bottom: 1px solid var(--border); }
   tbody tr.idle-row { opacity: 0.55; }
+  tbody tr.row-success { background: rgba(63, 185, 80, 0.12); }
+  tbody tr.row-failure { background: rgba(248, 81, 73, 0.12); }
+  tbody tr.row-anomaly { background: rgba(210, 153, 34, 0.12); }
+  tbody tr.row-success:hover, tbody tr.row-failure:hover, tbody tr.row-anomaly:hover {
+    filter: brightness(1.3);
+  }
 
   .layers-table tr { cursor: default; }
   .layers-table tr:hover { background: transparent; }
@@ -455,6 +461,7 @@
         <input type="text" id="pusSubtypeFilter" placeholder="PUS subtype (e.g. 1,25)">
         <input type="text" id="satelliteFilter" placeholder="Spacecraft (e.g. 13,14)">
         <label class="checkbox"><input type="checkbox" id="excludeIdle"> Hide idle packets</label>
+        <label class="checkbox"><input type="checkbox" id="excludeHousekeeping"> Hide Housekeeping (3/25)</label>
         <button onclick="loadPackets()">Filter</button>
       </div>
       <div class="hint">Use comma-separated values to filter on several at once.</div>
@@ -973,6 +980,13 @@ function parseIntList(value) {
   return value.split(',').map(v => v.trim()).filter(v => v.length > 0);
 }
 
+function rowHighlightClass(p) {
+  if (p.pus_type === 1 && (p.pus_subtype === 1 || p.pus_subtype === 7)) return 'row-success';
+  if (p.pus_type === 1 && (p.pus_subtype === 2 || p.pus_subtype === 8)) return 'row-failure';
+  if (p.pus_type === 5 && [2, 3, 4].includes(p.pus_subtype)) return 'row-anomaly';
+  return '';
+}
+
 async function loadPackets() {
   if (!currentSessionId) return;
 
@@ -982,6 +996,7 @@ async function loadPackets() {
   parseIntList(document.getElementById('pusSubtypeFilter').value).forEach(v => params.append('pus_subtype', v));
   parseIntList(document.getElementById('satelliteFilter').value).forEach(v => params.append('spacecraft_id', v));
   if (document.getElementById('excludeIdle').checked) params.set('exclude_idle', 'true');
+  if (document.getElementById('excludeHousekeeping').checked) params.set('exclude_housekeeping', 'true');
 
   const res = await fetch(`/api/sessions/${currentSessionId}/packets?${params}`);
   currentPackets = await res.json();
@@ -997,7 +1012,7 @@ async function loadPackets() {
   emptyState.style.display = 'none';
 
   tbody.innerHTML = currentPackets.map((p, i) => `
-    <tr onclick="openModal(${i})" class="${p.is_idle ? 'idle-row' : ''}">
+    <tr onclick="openModal(${i})" class="${p.is_idle ? 'idle-row' : rowHighlightClass(p)}">
       <td>${p.id}</td>
       <td>${p.spacecraft_id}</td>
       <td><span class="badge">${p.apid}</span></td>
@@ -1029,7 +1044,8 @@ function openModal(index) {
 
   document.getElementById('modalOverlay').classList.add('open');
 }
-
+document.getElementById('excludeIdle').addEventListener('change', loadPackets);
+document.getElementById('excludeHousekeeping').addEventListener('change', loadPackets);
 function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
 function closeModalOnOverlay(event) { if (event.target.id === 'modalOverlay') closeModal(); }
 

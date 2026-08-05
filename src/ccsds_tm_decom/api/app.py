@@ -8,8 +8,8 @@ frames, multi-value packet filtering, and a live throughput status endpoint.
 import asyncio
 import datetime
 import json
-import re
 import os
+import re
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -371,11 +371,13 @@ async def list_packets(
     pus_subtype: list[int] | None = Query(None),
     spacecraft_id: list[int] | None = Query(None),
     exclude_idle: bool = False,
+    exclude_housekeeping: bool = False,
     limit: int = Query(200, le=2000),
 ):
     """
     List packets for a session, with multi-value filters. exclude_idle
-    drops CCSDS Idle Packets (APID 2047).
+    drops CCSDS Idle Packets (APID 2047). exclude_housekeeping drops
+    PUS 3/25 (Housekeeping parameter report) packets.
     """
     conditions = ["f.session_id = $1"]
     params: list = [session_id]
@@ -394,6 +396,8 @@ async def list_packets(
         conditions.append(f"f.spacecraft_id = ANY(${len(params)})")
     if exclude_idle:
         conditions.append(f"p.apid != {IDLE_APID}")
+    if exclude_housekeeping:
+        conditions.append("NOT (p.pus_type = 3 AND p.pus_subtype = 25)")
 
     params.append(limit)
     where_clause = " AND ".join(conditions)
