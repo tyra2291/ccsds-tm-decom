@@ -2,15 +2,16 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: ccsds
-      POSTGRES_PASSWORD: ccsds_dev_password
-      POSTGRES_DB: ccsds_tm_decom
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ccsds -d ccsds_tm_decom"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,7 +21,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://ccsds:ccsds_dev_password@postgres:5432/ccsds_tm_decom
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,7 +40,7 @@ services:
       "ccsds-tm-decom",
       "--mission-config", "src/ccsds_tm_decom/schemas/missions/cadu_only.json",
       "--session-name", "docker-demo",
-      "--dsn", "postgresql://ccsds:ccsds_dev_password@postgres:5432/ccsds_tm_decom",
+      "--dsn", "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}",
       "tcp", "--host", "fake-server", "--port", "9999",
     ]
     profiles: ["demo"]
