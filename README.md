@@ -4,9 +4,43 @@ A CCSDS/PUS satellite telemetry decommutator — a Python system that receives, 
 
 ## Why this project exists
 
-This is a personal learning project, built with the help of Claude (Anthropic's AI assistant) as a hands-on way to strengthen Python fundamentals — project structure, testing, packaging, asynchronous programming.
+This is a personal learning project, built with the help of Claude (Anthropic's AI assistant) as a hands-on way to strengthen Python fundamentals — project structure, testing, packaging, asynchronous programming — and to get hands-on experience with the platform engineering tools that surround an application: containerization, CI/CD, and Kubernetes.
 
-The project was built incrementally, file by file and feature by feature: each new piece of functionality was implemented, then explained line by line before moving on to the next, with the explicit goal of actually understanding the code rather than just having it work. Every design choice — from the generic bitfield decoder to the layered pipeline architecture — was walked through and justified before being adopted. Claude wrote the code under this direction, including the web UI's layout and styling.
+The project was built incrementally, file by file and feature by feature: each new piece of functionality was implemented, then explained line by line before moving on to the next, with the explicit goal of actually understanding the code rather than just having it work. Every design choice — from the generic bitfield decoder to the layered pipeline architecture to the Kubernetes deployment topology — was walked through and justified before being adopted. Claude wrote the code under this direction, including the web UI's layout and styling.
+
+## Quick start
+
+### Option A — Docker Compose (simplest)
+
+```bash
+git clone git@github.com:tyra2291/ccsds-tm-decom.git
+cd ccsds-tm-decom
+docker compose up --build
+```
+Open `http://localhost:8000`.
+
+Add `--profile demo` to also start a fake telemetry server and a decoder client connected to it, for an automatic live demo:
+```bash
+docker compose --profile demo up --build
+```
+
+### Option B — Kubernetes (local, via Minikube)
+
+```bash
+git clone git@github.com:tyra2291/ccsds-tm-decom.git
+cd ccsds-tm-decom
+minikube start
+./k8s/deploy.sh
+kubectl port-forward service/api 8000:8000
+```
+Open `http://localhost:8000`.
+
+### Running the test suite
+
+```bash
+poetry install
+poetry run pytest -v
+```
 
 ## Current features
 
@@ -17,8 +51,10 @@ The project was built incrementally, file by file and feature by feature: each n
 - **Multiple ingestion modes**: a raw binary file reader (`io/batch.py`) and a real-time TCP client (`io/tcp_client.py`) that connects out to a telemetry front-end and decodes frames as they arrive.
 - **PostgreSQL storage**: decoded frames and packets are persisted under named, metadata-rich acquisition sessions (connection type, host/port or file path, mission used), with cascading deletes.
 - **CLI entry point** (`ccsds-tm-decom`): decode from a file or a live TCP stream, with storage optional.
-- **Web UI + API** (FastAPI + vanilla JS): browse and filter existing sessions; create new sessions from a file upload or a live TCP connection (started as a background task); a "byte inspector" that decodes a pasted raw frame and visually color-codes which layer/field consumed which bytes; full mission config CRUD (create, edit, delete custom missions — the two default missions are protected from deletion); multi-value packet filtering (APID, PUS type/subtype, spacecraft, several values at once); PUS-based row highlighting (green for command acceptance/execution success, red for failure, orange for event anomalies); a live throughput indicator (frames/sec) for ongoing TCP sessions with automatic table refresh.
+- **Web UI + API** (FastAPI + vanilla JS): browse and filter existing sessions; create new sessions from a file upload or a live TCP connection (started as a background task); a "byte inspector" that decodes a pasted raw frame and visually color-codes which layer/field consumed which bytes, with an example frame available at a click; full mission config CRUD (create, edit, delete custom missions — the two default missions are protected from deletion); multi-value packet filtering (APID, PUS type/subtype, spacecraft, several values at once, applied instantly on checkbox toggle); PUS-based row highlighting (green for command acceptance/execution success, red for failure, orange for event anomalies); a live throughput indicator (frames/sec) for ongoing TCP sessions with automatic table refresh.
 - **Containerized**: multi-stage Dockerfile and a `docker-compose.yml` with a `demo` profile separating the permanent stack (PostgreSQL + API) from optional demo services (a fake telemetry server + a decoder client pointed at it).
+- **CI/CD** (GitHub Actions): the test suite runs on every push and pull request. Pushing a version tag (`v*.*.*`) additionally builds a multi-architecture (amd64/arm64) Docker image and publishes it to GitHub Container Registry.
+- **Kubernetes deployment**: manifests for a local Minikube cluster — a PostgreSQL Deployment with persistent storage and automatic schema initialization, and an API Deployment pulling the image built by CI, wired together with Services, a ConfigMap, and a Secret.
 - **Test suite**: unit tests for every decoding module, integration tests validated against captured telemetry frames (including genuine Space Packet spillover across consecutive frames), and self-contained database tests using `testcontainers` (no pre-existing PostgreSQL instance required to run the test suite).
 
 ## Known limitations
@@ -27,8 +63,14 @@ The project was built incrementally, file by file and feature by feature: each n
 - **No connection handshake with the telemetry front-end.** `run_tcp_client` assumes the server starts pushing frames immediately upon connection. Real front-end systems (e.g. Safran's CORTEX) typically require a request/acknowledgment handshake before streaming telemetry — this would need to be added for use against a real front-end, but the exact message format is defined in vendor-proprietary interface specifications not implemented here.
 - **The web UI's mission layer editor writes directly to the JSON config files on disk** — there's no versioning or audit trail for these edits beyond git history, and concurrent edits from two browser tabs could race.
 - **Test data is synthetic/anonymized.** Fixture frames used in tests and demos have had spacecraft ID and APIDs remapped to random values (with FECF recomputed to keep frames valid) to avoid exposing any real mission-specific identifiers.
+- **Kubernetes secrets are not really secret.** The PostgreSQL credentials live in a K8s `Secret`, which only base64-encodes values rather than encrypting them — adequate for local learning, not for a real deployment (would need a tool like Vault or Sealed Secrets).
+- **No Ingress or LoadBalancer.** The API is reached via `kubectl port-forward` in local Minikube; a real cluster deployment would use an Ingress controller or a cloud LoadBalancer instead.
 
-## Architecture
+## How this project was worked on
+
+Each feature was built through the same loop: implement a small piece, run it, fix whatever broke, then explain every new line of code before moving to the next piece. This applied equally to the Python decoding logic, the Docker/Compose setup, the GitHub Actions workflow, and the Kubernetes manifests — the goal throughout was understanding *why* each piece works the way it does, not just accumulating working code. Real captured satellite telemetry (from an actual ground-segment simulator log) was used from early on to validate the decoder against genuine data rather than only hand-crafted test bytes, and several real bugs (a missing bit in a header offset, a silently-shadowed route definition, a stale ground-segment layer config) were found and fixed this way.
+
+## Architecture: the code (`src/ccsds_tm_decom/`)
 
 ```
 src/ccsds_tm_decom/
@@ -66,7 +108,7 @@ src/ccsds_tm_decom/
 └── schemas/                    # all JSON configs: field schemas, ground segment layers, missions
 ```
 
-### How the pieces call each other
+### How the source files call each other
 
 `main.py` (CLI) or `api/app.py` (web) are the only places that decide *where frames come from* and *where results go* — every module below them is agnostic to both:
 
@@ -94,9 +136,99 @@ tcp_client.py and batch.py never import storage.py directly; the CLI/API wires t
 
 `inspector.py` mirrors the same decoding sequence as `process_frame`, but records the byte range consumed by each step instead of discarding that information — it exists purely to power the UI's visual byte breakdown, and shares the same underlying schema/layer logic rather than duplicating it.
 
+## Architecture: Docker
+
+```
+Dockerfile (multi-stage)
+  Stage "builder": installs Poetry + dependencies into a venv
+  Stage "runtime": copies only that venv + the source code — no Poetry,
+                    no build cache, no dev dependencies in the final image
+
+docker-compose.yml
+  postgres        (always started)  — official postgres:16 image, with a healthcheck
+  api             (always started)  — built from the Dockerfile, runs uvicorn
+  fake-server     (profile: demo)   — same image, runs a script that emulates a telemetry front-end
+  decoder         (profile: demo)   — same image, runs the CLI against fake-server
+```
+
+Every non-`postgres` service shares the **same built image** — only the `command:` differs. Services talk to each other by name (`postgres`, `fake-server`) via Docker Compose's internal DNS, never by hardcoded IP.
+
+## Architecture: CI/CD (GitHub Actions)
+
+```
+.github/workflows/ci.yml
+
+  on: push (any branch), pull_request (main), tags matching v*.*.*
+
+  job "test"            — always runs: installs dependencies, runs pytest
+                           (including tests that spin up their own ephemeral
+                           PostgreSQL container via testcontainers)
+
+  job "build-and-push"  — needs: test (only runs if tests pass)
+                           if: only on a pushed tag (refs/tags/v*)
+                           builds the image for linux/amd64 AND linux/arm64
+                           (via QEMU + Buildx), pushes to
+                           ghcr.io/tyra2291/ccsds-tm-decom, tagged with
+                           the version and "latest"
+```
+
+A normal `git push` only ever runs the tests. Publishing a new image is a deliberate, separate action:
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+## Architecture: Kubernetes (local, via Minikube)
+
+```
+k8s/
+├── postgres-secret.yaml            # Secret: DB user/password/db name
+├── postgres-pvc.yaml               # PersistentVolumeClaim: 1Gi, survives Pod restarts
+├── postgres-schema-configmap.yaml  # ConfigMap generated from db/schema.sql
+├── postgres-deployment.yaml        # Deployment (1 replica): postgres:16, mounts the Secret
+│                                    #   (env vars), the PVC (data dir), and the ConfigMap
+│                                    #   at /docker-entrypoint-initdb.d/ (auto-runs schema.sql
+│                                    #   on first boot only, when the data volume is empty)
+├── postgres-service.yaml           # Service (ClusterIP): "postgres", reachable only inside
+│                                    #   the cluster — same as Compose's service-name DNS
+├── api-configmap.yaml              # ConfigMap: DATABASE_URL pointing at the postgres Service
+├── api-deployment.yaml             # Deployment (1 replica): pulls the image built by CI
+│                                    #   from GHCR, HTTP readiness probe on /api/sessions
+├── api-service.yaml                # Service (NodePort): exposes the API outside the cluster
+└── deploy.sh                       # applies everything above in the right order, waiting
+                                       for PostgreSQL to be ready before starting the API
+```
+
+```
+┌─────────────────────────────┐
+│ Deployment "postgres"         │
+│   Pod (postgres:16)           │
+│    ├── Secret (env vars)      │
+│    ├── PVC (data persistence) │
+│    └── ConfigMap (schema.sql, │
+│        auto-applied on first  │
+│        boot)                  │
+└─────────────────────────────┘
+              ▲
+              │ Service "postgres" (ClusterIP — internal only)
+              │
+┌─────────────────────────────┐
+│ Deployment "api"               │
+│   Pod (image from GHCR)       │
+│    └── ConfigMap (DATABASE_URL)│
+└─────────────────────────────┘
+              ▲
+              │ Service "api" (NodePort)
+              │
+     kubectl port-forward
+              │
+        localhost:8000
+```
+
+Access is via `kubectl port-forward` rather than the NodePort directly: Minikube's Docker driver on macOS doesn't expose node IPs directly to the host, so port-forwarding is the practical way to reach the API locally. On a real multi-node cluster, the NodePort (or, more commonly, a LoadBalancer/Ingress) would be reachable directly.
+
 ## Tests
 
-Run with:
 ```bash
 poetry run pytest -v
 ```
@@ -107,26 +239,9 @@ poetry run pytest -v
 
 ## Tech stack
 
-Python 3.14, Poetry, pytest, testcontainers, asyncpg, FastAPI, Docker/docker-compose, PostgreSQL.
-
-## Installation & usage
-
-```bash
-git clone git@github.com:YOUR_USERNAME/ccsds-tm-decom.git
-cd ccsds-tm-decom
-poetry install
-poetry run pytest -v
-```
-
-**Run everything via Docker** (recommended):
-```bash
-docker compose up --build              # PostgreSQL + API/UI only
-docker compose --profile demo up --build  # + a fake telemetry server + a decoder connected to it
-```
-Then open `http://localhost:8000`.
+Python 3.14, Poetry, pytest, testcontainers, asyncpg, FastAPI, Docker/docker-compose, PostgreSQL, GitHub Actions, Kubernetes (Minikube).
 
 ## Roadmap / not yet implemented
 
-- **CI/CD**: GitHub Actions to run the test suite and build/push the Docker image automatically on push.
-- **Kubernetes**: deployment manifests (Deployments, Services, ConfigMaps, Secrets) to run the stack on a cluster, pulling the image built by CI.
 - **Grafana/Prometheus**: metrics export and dashboards for monitoring decode throughput and error rates.
+- **Ingress**: a real HTTP routing layer instead of `kubectl port-forward`, for a more production-like local setup.

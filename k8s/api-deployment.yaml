@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/tyra2291/ccsds-tm-decom:v0.2.0
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: api-config
+          readinessProbe:
+            httpGet:
+              path: /api/sessions
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
