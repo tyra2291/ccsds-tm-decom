@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: api-config
-data:
-  DATABASE_URL: "postgresql://ccsds:ccsds_dev_password@postgres:5432/ccsds_tm_decom"
