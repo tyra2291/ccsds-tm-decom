@@ -33,6 +33,6 @@ kubectl apply -f k8s/api-service.yaml
 echo "Waiting for API to be ready..."
 kubectl wait --for=condition=ready pod -l app=api --timeout=90s
 
-echo "Done. Access the UI with:"
-echo "  kubectl port-forward service/api 8000:8000"
-echo "Then open http://localhost:8000"
+echo "Starting port-forward on http://localhost:8000 ..."
+echo "Press Ctrl+C to stop."
+kubectl port-forward service/api 8000:8000

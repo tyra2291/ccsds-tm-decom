@@ -10,11 +10,18 @@ The project was built incrementally, file by file and feature by feature: each n
 
 ## Quick start
 
+First, set up your local secrets (never committed to git):
+```bash
+cp .env.example .env
+```
+Then edit `.env` and set a real value for `POSTGRES_PASSWORD`.
+
 ### Option A — Docker Compose (simplest)
 
 ```bash
 git clone git@github.com:tyra2291/ccsds-tm-decom.git
 cd ccsds-tm-decom
+cp .env.example .env   # edit POSTGRES_PASSWORD before continuing
 docker compose up --build
 ```
 Open `http://localhost:8000`.
@@ -29,11 +36,11 @@ docker compose --profile demo up --build
 ```bash
 git clone git@github.com:tyra2291/ccsds-tm-decom.git
 cd ccsds-tm-decom
+cp .env.example .env   # edit POSTGRES_PASSWORD before continuing
 minikube start
 ./k8s/deploy.sh
-kubectl port-forward service/api 8000:8000
 ```
-Open `http://localhost:8000`.
+Open `http://localhost:8000`. `deploy.sh` applies all manifests, generates the PostgreSQL Secret and the API's ConfigMap directly in the cluster from `.env` (neither is ever written to a committed YAML file), waits for both Deployments to be ready, and finishes by running `kubectl port-forward` in the foreground — press Ctrl+C to stop.
 
 ### Running the test suite
 
@@ -54,7 +61,8 @@ poetry run pytest -v
 - **Web UI + API** (FastAPI + vanilla JS): browse and filter existing sessions; create new sessions from a file upload or a live TCP connection (started as a background task); a "byte inspector" that decodes a pasted raw frame and visually color-codes which layer/field consumed which bytes, with an example frame available at a click; full mission config CRUD (create, edit, delete custom missions — the two default missions are protected from deletion); multi-value packet filtering (APID, PUS type/subtype, spacecraft, several values at once, applied instantly on checkbox toggle); PUS-based row highlighting (green for command acceptance/execution success, red for failure, orange for event anomalies); a live throughput indicator (frames/sec) for ongoing TCP sessions with automatic table refresh.
 - **Containerized**: multi-stage Dockerfile and a `docker-compose.yml` with a `demo` profile separating the permanent stack (PostgreSQL + API) from optional demo services (a fake telemetry server + a decoder client pointed at it).
 - **CI/CD** (GitHub Actions): the test suite runs on every push and pull request. Pushing a version tag (`v*.*.*`) additionally builds a multi-architecture (amd64/arm64) Docker image and publishes it to GitHub Container Registry.
-- **Kubernetes deployment**: manifests for a local Minikube cluster — a PostgreSQL Deployment with persistent storage and automatic schema initialization, and an API Deployment pulling the image built by CI, wired together with Services, a ConfigMap, and a Secret.
+- **Kubernetes deployment**: manifests for a local Minikube cluster — a PostgreSQL Deployment with persistent storage and automatic schema initialization, and an API Deployment pulling the image built by CI, wired together with Services; `deploy.sh` applies everything, waits for readiness, and opens the port-forward.
+- **Secrets kept out of git**: a local, gitignored `.env` file (with `.env.example` as a template) supplies the database password to both Docker Compose and the Kubernetes deployment script — no credentials are ever committed to a YAML or Compose file.
 - **Test suite**: unit tests for every decoding module, integration tests validated against captured telemetry frames (including genuine Space Packet spillover across consecutive frames), and self-contained database tests using `testcontainers` (no pre-existing PostgreSQL instance required to run the test suite).
 
 ## Known limitations
@@ -63,12 +71,12 @@ poetry run pytest -v
 - **No connection handshake with the telemetry front-end.** `run_tcp_client` assumes the server starts pushing frames immediately upon connection. Real front-end systems (e.g. Safran's CORTEX) typically require a request/acknowledgment handshake before streaming telemetry — this would need to be added for use against a real front-end, but the exact message format is defined in vendor-proprietary interface specifications not implemented here.
 - **The web UI's mission layer editor writes directly to the JSON config files on disk** — there's no versioning or audit trail for these edits beyond git history, and concurrent edits from two browser tabs could race.
 - **Test data is synthetic/anonymized.** Fixture frames used in tests and demos have had spacecraft ID and APIDs remapped to random values (with FECF recomputed to keep frames valid) to avoid exposing any real mission-specific identifiers.
-- **Kubernetes secrets are not really secret.** The PostgreSQL credentials live in a K8s `Secret`, which only base64-encodes values rather than encrypting them — adequate for local learning, not for a real deployment (would need a tool like Vault or Sealed Secrets).
+- **Secrets are kept out of git via a local `.env` file** (see `.env.example`), never committed. For Kubernetes, the Secret and ConfigMap carrying the database credentials are generated on the fly by `deploy.sh` rather than stored as static YAML — but the underlying K8s `Secret` mechanism still only base64-encodes values rather than encrypting them, which is adequate for local learning but not for a real deployment (which would need a tool like Vault or Sealed Secrets).
 - **No Ingress or LoadBalancer.** The API is reached via `kubectl port-forward` in local Minikube; a real cluster deployment would use an Ingress controller or a cloud LoadBalancer instead.
 
 ## How this project was worked on
 
-Each feature was built through the same loop: implement a small piece, run it, fix whatever broke, then explain every new line of code before moving to the next piece. This applied equally to the Python decoding logic, the Docker/Compose setup, the GitHub Actions workflow, and the Kubernetes manifests — the goal throughout was understanding *why* each piece works the way it does, not just accumulating working code. Real captured satellite telemetry (from an actual ground-segment simulator log) was used from early on to validate the decoder against genuine data rather than only hand-crafted test bytes, and several real bugs (a missing bit in a header offset, a silently-shadowed route definition, a stale ground-segment layer config) were found and fixed this way.
+Each feature was built through the same loop: implement a small piece, run it, fix whatever broke, then explain every new line of code before moving to the next piece. This applied equally to the Python decoding logic, the Docker/Compose setup, the GitHub Actions workflow, and the Kubernetes manifests — the goal throughout was understanding *why* each piece works the way it does, not just accumulating working code. Real captured satellite telemetry (from an actual ground-segment simulator log) was used from early on to validate the decoder against genuine data rather than only hand-crafted test bytes, and several real bugs (a missing bit in a header offset, a silently-shadowed route definition, a stale ground-segment layer config, a hardcoded password later removed from every committed file) were found and fixed this way.
 
 ## Architecture: the code (`src/ccsds_tm_decom/`)
 
@@ -144,7 +152,7 @@ Dockerfile (multi-stage)
   Stage "runtime": copies only that venv + the source code — no Poetry,
                     no build cache, no dev dependencies in the final image
 
-docker-compose.yml
+docker-compose.yml (reads secrets from .env, never hardcoded)
   postgres        (always started)  — official postgres:16 image, with a healthcheck
   api             (always started)  — built from the Dockerfile, runs uvicorn
   fake-server     (profile: demo)   — same image, runs a script that emulates a telemetry front-end
@@ -182,28 +190,32 @@ git push origin v0.3.0
 
 ```
 k8s/
-├── postgres-secret.yaml            # Secret: DB user/password/db name
 ├── postgres-pvc.yaml               # PersistentVolumeClaim: 1Gi, survives Pod restarts
 ├── postgres-schema-configmap.yaml  # ConfigMap generated from db/schema.sql
 ├── postgres-deployment.yaml        # Deployment (1 replica): postgres:16, mounts the Secret
-│                                    #   (env vars), the PVC (data dir), and the ConfigMap
-│                                    #   at /docker-entrypoint-initdb.d/ (auto-runs schema.sql
-│                                    #   on first boot only, when the data volume is empty)
+│                                    #   (env vars, generated at deploy time — see below), the
+│                                    #   PVC (data dir), and the ConfigMap at
+│                                    #   /docker-entrypoint-initdb.d/ (auto-runs schema.sql on
+│                                    #   first boot only, when the data volume is empty)
 ├── postgres-service.yaml           # Service (ClusterIP): "postgres", reachable only inside
 │                                    #   the cluster — same as Compose's service-name DNS
-├── api-configmap.yaml              # ConfigMap: DATABASE_URL pointing at the postgres Service
 ├── api-deployment.yaml             # Deployment (1 replica): pulls the image built by CI
 │                                    #   from GHCR, HTTP readiness probe on /api/sessions
 ├── api-service.yaml                # Service (NodePort): exposes the API outside the cluster
-└── deploy.sh                       # applies everything above in the right order, waiting
-                                       for PostgreSQL to be ready before starting the API
+└── deploy.sh                       # reads .env, generates the postgres-secret Secret and the
+                                       api-config ConfigMap directly in the cluster (never
+                                       written as committed YAML), applies every manifest above
+                                       in order, waits for both Deployments to be ready, and
+                                       finishes by running kubectl port-forward in the foreground
 ```
 
 ```
 ┌─────────────────────────────┐
 │ Deployment "postgres"         │
 │   Pod (postgres:16)           │
-│    ├── Secret (env vars)      │
+│    ├── Secret (env vars,      │
+│    │   generated by deploy.sh │
+│    │   from .env)             │
 │    ├── PVC (data persistence) │
 │    └── ConfigMap (schema.sql, │
 │        auto-applied on first  │
@@ -215,12 +227,15 @@ k8s/
 ┌─────────────────────────────┐
 │ Deployment "api"               │
 │   Pod (image from GHCR)       │
-│    └── ConfigMap (DATABASE_URL)│
+│    └── ConfigMap (DATABASE_URL,│
+│        generated by deploy.sh)│
 └─────────────────────────────┘
               ▲
               │ Service "api" (NodePort)
               │
      kubectl port-forward
+       (run automatically
+        by deploy.sh)
               │
         localhost:8000
 ```
