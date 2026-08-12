@@ -10,7 +10,7 @@ from functools import partial
 import asyncpg
 
 from ccsds_tm_decom.orchestration.decoder import FrameResult
-
+from ccsds_tm_decom.metrics import frames_decoded_total, packets_decoded_total
 
 async def create_pool(dsn: str) -> asyncpg.Pool:
     """
@@ -91,15 +91,12 @@ async def end_session(pool: asyncpg.Pool, session_id: int) -> None:
         )
 
 
-async def store_frame_result(pool: asyncpg.Pool, session_id: int, result: FrameResult) -> None:
+async def store_frame_result(
+    pool: asyncpg.Pool, session_id: int, result: FrameResult, mission_name: str = "unknown") -> None:
     """
     Persist a decoded frame and all its extracted packets to PostgreSQL,
-    linked to the given acquisition session.
-
-    Args:
-        pool: An active asyncpg connection pool.
-        session_id: The session this frame belongs to (see start_session).
-        result: The decoded FrameResult to store.
+    linked to the given acquisition session. Also increments Prometheus
+    counters for decode throughput.
     """
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -136,19 +133,18 @@ async def store_frame_result(pool: asyncpg.Pool, session_id: int, result: FrameR
                     packet["pus_subtype"],
                     packet["raw_bytes"],
                 )
+                packets_decoded_total.labels(
+                    mission_name=mission_name,
+                    is_idle=str(packet["apid"] == 2047),
+                ).inc()
+
+    frames_decoded_total.labels(mission_name=mission_name).inc()
 
 
-def make_storage_callback(pool: asyncpg.Pool, session_id: int):
+def make_storage_callback(pool: asyncpg.Pool, session_id: int, mission_name: str = "unknown"):
     """
     Build an `on_frame` callback (see io.tcp_client, io.batch) that
-    stores each decoded FrameResult under the given session.
-
-    Args:
-        pool: An active asyncpg connection pool.
-        session_id: The session to link stored frames to (see start_session).
-
-    Returns:
-        An async callable taking a single FrameResult argument, suitable
-        for use as `on_frame` in run_tcp_client or process_file.
+    stores each decoded FrameResult under the given session, and tags
+    metrics with the mission name.
     """
-    return partial(store_frame_result, pool, session_id)
+    return partial(store_frame_result, pool, session_id, mission_name=mission_name)

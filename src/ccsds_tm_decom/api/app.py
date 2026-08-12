@@ -18,6 +18,8 @@ import asyncpg
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from fastapi import Response
+from ccsds_tm_decom.metrics import render_metrics
 
 from ccsds_tm_decom.ground_segment.mission_config import load_mission_config
 from ccsds_tm_decom.inspector import inspect_frame
@@ -278,7 +280,7 @@ async def start_tcp_session(req: TcpSessionRequest):
         host=req.host,
         port=req.port,
     )
-    on_frame = make_storage_callback(app.state.pool, session_id)
+    on_frame = make_storage_callback(app.state.pool, session_id, mission_name=mission.name)
 
     async def _run():
         try:
@@ -334,7 +336,7 @@ async def upload_file(
             security_header_bytes=mission.security_header_bytes,
         )
         for result in results:
-            await store_frame_result(app.state.pool, session_id, result)
+            await store_frame_result(app.state.pool, session_id, result, mission_name=mission.name)
 
         await end_session(app.state.pool, session_id)
         return {"session_id": session_id, "frames_decoded": len(results)}
@@ -422,5 +424,10 @@ async def list_packets(
             results.append(item)
         return results
 
+@app.get("/metrics")
+async def metrics():
+    """Expose Prometheus metrics in text exposition format."""
+    body, content_type = render_metrics()
+    return Response(content=body, media_type=content_type)
 
 app.mount("/", StaticFiles(directory="src/ccsds_tm_decom/api/static", html=True), name="static")
