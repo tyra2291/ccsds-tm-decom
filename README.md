@@ -4,9 +4,9 @@ A CCSDS/PUS satellite telemetry decommutator — a Python system that receives, 
 
 ## Why this project exists
 
-This is a personal learning project, built with the help of Claude (Anthropic's AI assistant) as a hands-on way to strengthen Python fundamentals — project structure, testing, packaging, asynchronous programming — and to get hands-on experience with the platform engineering tools that surround an application: containerization, CI/CD, and Kubernetes.
+This is a personal learning project, built with the help of Claude (Anthropic's AI assistant) as a hands-on way to strengthen Python fundamentals — project structure, testing, packaging, asynchronous programming — and to get hands-on experience with the platform engineering tools that surround an application: containerization, CI/CD, Kubernetes, and observability.
 
-The project was built incrementally, file by file and feature by feature: each new piece of functionality was implemented, then explained line by line before moving on to the next, with the explicit goal of actually understanding the code rather than just having it work. Every design choice — from the generic bitfield decoder to the layered pipeline architecture to the Kubernetes deployment topology — was walked through and justified before being adopted. Claude wrote the code under this direction, including the web UI's layout and styling.
+The project was built incrementally, file by file and feature by feature: each new piece of functionality was implemented, then explained line by line before moving on to the next, with the explicit goal of actually understanding the code rather than just having it work. Every design choice — from the generic bitfield decoder to the layered pipeline architecture to the Kubernetes deployment topology to the metrics design — was walked through and justified before being adopted. Claude wrote the code under this direction, including the web UI's layout and styling.
 
 ## Quick start
 
@@ -14,17 +14,19 @@ First, set up your local secrets (never committed to git):
 ```bash
 cp .env.example .env
 ```
-Then edit `.env` and set a real value for `POSTGRES_PASSWORD`.
+Then edit `.env` and set real values for `POSTGRES_PASSWORD` and `GRAFANA_PASSWORD`.
 
 ### Option A — Docker Compose (simplest)
 
 ```bash
-git clone git@github.com:tyra2291/ccsds-tm-decom.git
+git clone git@github.com:benoit-hassan/ccsds-tm-decom.git
 cd ccsds-tm-decom
-cp .env.example .env   # edit POSTGRES_PASSWORD before continuing
+cp .env.example .env   # edit POSTGRES_PASSWORD and GRAFANA_PASSWORD before continuing
 docker compose up --build
 ```
-Open `http://localhost:8000`.
+- Web UI: `http://localhost:8000`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (login: `admin` / your `GRAFANA_PASSWORD`)
 
 Add `--profile demo` to also start a fake telemetry server and a decoder client connected to it, for an automatic live demo:
 ```bash
@@ -34,13 +36,13 @@ docker compose --profile demo up --build
 ### Option B — Kubernetes (local, via Minikube)
 
 ```bash
-git clone git@github.com:tyra2291/ccsds-tm-decom.git
+git clone git@github.com:benoit-hassan/ccsds-tm-decom.git
 cd ccsds-tm-decom
 cp .env.example .env   # edit POSTGRES_PASSWORD before continuing
 minikube start
 ./k8s/deploy.sh
 ```
-Open `http://localhost:8000`. `deploy.sh` applies all manifests, generates the PostgreSQL Secret and the API's ConfigMap directly in the cluster from `.env` (neither is ever written to a committed YAML file), waits for both Deployments to be ready, and finishes by running `kubectl port-forward` in the foreground — press Ctrl+C to stop.
+Open `http://localhost:8000`. `deploy.sh` applies all manifests, generates the PostgreSQL Secret and the API's ConfigMap directly in the cluster from `.env` (neither is ever written to a committed YAML file), waits for both Deployments to be ready, and finishes by running `kubectl port-forward` in the foreground — press Ctrl+C to stop. (Prometheus/Grafana are currently Docker Compose only — see Roadmap.)
 
 ### Running the test suite
 
@@ -59,10 +61,11 @@ poetry run pytest -v
 - **PostgreSQL storage**: decoded frames and packets are persisted under named, metadata-rich acquisition sessions (connection type, host/port or file path, mission used), with cascading deletes.
 - **CLI entry point** (`ccsds-tm-decom`): decode from a file or a live TCP stream, with storage optional.
 - **Web UI + API** (FastAPI + vanilla JS): browse and filter existing sessions; create new sessions from a file upload or a live TCP connection (started as a background task); a "byte inspector" that decodes a pasted raw frame and visually color-codes which layer/field consumed which bytes, with an example frame available at a click; full mission config CRUD (create, edit, delete custom missions — the two default missions are protected from deletion); multi-value packet filtering (APID, PUS type/subtype, spacecraft, several values at once, applied instantly on checkbox toggle); PUS-based row highlighting (green for command acceptance/execution success, red for failure, orange for event anomalies); a live throughput indicator (frames/sec) for ongoing TCP sessions with automatic table refresh.
-- **Containerized**: multi-stage Dockerfile and a `docker-compose.yml` with a `demo` profile separating the permanent stack (PostgreSQL + API) from optional demo services (a fake telemetry server + a decoder client pointed at it).
+- **Metrics & dashboards**: a Prometheus `/metrics` endpoint exposes frame/packet decode counters (tagged by mission and, for packets, by idle/real), incremented centrally wherever a result is stored so every ingestion path reports consistently. Prometheus scrapes the API every 5 seconds; a Grafana dashboard visualizes decode rate (frames/sec) using `rate()` queries.
+- **Containerized**: multi-stage Dockerfile and a `docker-compose.yml` with a `demo` profile separating the permanent stack (PostgreSQL + API + Prometheus + Grafana) from optional demo services (a fake telemetry server + a decoder client pointed at it).
 - **CI/CD** (GitHub Actions): the test suite runs on every push and pull request. Pushing a version tag (`v*.*.*`) additionally builds a multi-architecture (amd64/arm64) Docker image and publishes it to GitHub Container Registry.
 - **Kubernetes deployment**: manifests for a local Minikube cluster — a PostgreSQL Deployment with persistent storage and automatic schema initialization, and an API Deployment pulling the image built by CI, wired together with Services; `deploy.sh` applies everything, waits for readiness, and opens the port-forward.
-- **Secrets kept out of git**: a local, gitignored `.env` file (with `.env.example` as a template) supplies the database password to both Docker Compose and the Kubernetes deployment script — no credentials are ever committed to a YAML or Compose file.
+- **Secrets kept out of git**: a local, gitignored `.env` file (with `.env.example` as a template) supplies the database password and the Grafana admin password to Docker Compose, and the database password to the Kubernetes deployment script — no credentials are ever committed to a YAML or Compose file.
 - **Test suite**: unit tests for every decoding module, integration tests validated against captured telemetry frames (including genuine Space Packet spillover across consecutive frames), and self-contained database tests using `testcontainers` (no pre-existing PostgreSQL instance required to run the test suite).
 
 ## Known limitations
@@ -73,10 +76,13 @@ poetry run pytest -v
 - **Test data is synthetic/anonymized.** Fixture frames used in tests and demos have had spacecraft ID and APIDs remapped to random values (with FECF recomputed to keep frames valid) to avoid exposing any real mission-specific identifiers.
 - **Secrets are kept out of git via a local `.env` file** (see `.env.example`), never committed. For Kubernetes, the Secret and ConfigMap carrying the database credentials are generated on the fly by `deploy.sh` rather than stored as static YAML — but the underlying K8s `Secret` mechanism still only base64-encodes values rather than encrypting them, which is adequate for local learning but not for a real deployment (which would need a tool like Vault or Sealed Secrets).
 - **No Ingress or LoadBalancer.** The API is reached via `kubectl port-forward` in local Minikube; a real cluster deployment would use an Ingress controller or a cloud LoadBalancer instead.
+- **Decode counters live in the API process's memory, not in PostgreSQL.** They increment once per `store_frame_result` call, so re-uploading the same file creates a second bump (not deduplicated against what's already in the database), and they reset to zero on every API restart. This is a reasonable tradeoff for the instantaneous decode-rate use case (`rate()` over a short window self-corrects quickly after a restart) but means the counters are not a reliable all-time total — that would need to be computed from PostgreSQL directly (e.g. `COUNT(*) FROM frames`).
+- **The Grafana container has no persistent volume.** Dashboards and data source configuration are created through the UI and are lost if the `grafana` container is removed (though they do survive a plain `docker compose stop` / `start`, since no volume means only removal — not stopping — wipes them).
+- **Prometheus/Grafana are Docker Compose only.** They have not been ported to the Kubernetes manifests yet.
 
 ## How this project was worked on
 
-Each feature was built through the same loop: implement a small piece, run it, fix whatever broke, then explain every new line of code before moving to the next piece. This applied equally to the Python decoding logic, the Docker/Compose setup, the GitHub Actions workflow, and the Kubernetes manifests — the goal throughout was understanding *why* each piece works the way it does, not just accumulating working code. Real captured satellite telemetry (from an actual ground-segment simulator log) was used from early on to validate the decoder against genuine data rather than only hand-crafted test bytes, and several real bugs (a missing bit in a header offset, a silently-shadowed route definition, a stale ground-segment layer config, a hardcoded password later removed from every committed file) were found and fixed this way.
+Each feature was built through the same loop: implement a small piece, run it, fix whatever broke, then explain every new line of code before moving to the next piece. This applied equally to the Python decoding logic, the Docker/Compose setup, the GitHub Actions workflow, the Kubernetes manifests, and the Prometheus/Grafana wiring — the goal throughout was understanding *why* each piece works the way it does, not just accumulating working code. Real captured satellite telemetry (from an actual ground-segment simulator log) was used from early on to validate the decoder against genuine data rather than only hand-crafted test bytes, and several real bugs (a missing bit in a header offset, a silently-shadowed route definition, a stale ground-segment layer config, a hardcoded password later removed from every committed file) were found and fixed this way.
 
 ## Architecture: the code (`src/ccsds_tm_decom/`)
 
@@ -101,13 +107,18 @@ src/ccsds_tm_decom/
 ├── io/                         # entry/exit points: where frames come from, where results go
 │   ├── batch.py                # reads a FILE of frames, loops over process_frame
 │   ├── tcp_client.py           # connects to a telemetry server, loops over process_frame in real time
-│   └── storage.py              # writes FrameResult objects to PostgreSQL, under a named session
+│   └── storage.py              # writes FrameResult objects to PostgreSQL, under a named session;
+│                                #   also increments Prometheus counters (see metrics.py)
+│
+├── metrics.py                  # Prometheus Counter definitions (frames/packets decoded) and
+│                                #   text-exposition rendering for the /metrics endpoint
 │
 ├── inspector.py                # annotated decode for the UI's byte inspector: same pipeline,
 │                                #   but records byte ranges instead of only values
 │
 ├── api/
-│   ├── app.py                  # FastAPI backend: sessions, packets, missions CRUD, inspector, uploads
+│   ├── app.py                  # FastAPI backend: sessions, packets, missions CRUD, inspector,
+│   │                            #   uploads, /metrics
 │   └── static/index.html       # single-page web UI (vanilla JS, no build step)
 │
 ├── main.py                     # CLI entry point: wires mission config + storage (optional) +
@@ -138,8 +149,12 @@ orchestration.decoder.process_frame() calls, in order:
                                                     internally when a secondary header is present)
 
 on_frame(result), when storage is enabled, is io.storage.store_frame_result
-(pool and session_id pre-bound via functools.partial in make_storage_callback) —
-tcp_client.py and batch.py never import storage.py directly; the CLI/API wires them together.
+(pool, session_id, and mission_name pre-bound via functools.partial in
+make_storage_callback) — tcp_client.py and batch.py never import storage.py
+directly; the CLI/API wires them together. store_frame_result is also the
+single place that increments the Prometheus counters defined in metrics.py,
+so every ingestion path reports metrics consistently without each caller
+needing to know about them.
 ```
 
 `inspector.py` mirrors the same decoding sequence as `process_frame`, but records the byte range consumed by each step instead of discarding that information — it exists purely to power the UI's visual byte breakdown, and shares the same underlying schema/layer logic rather than duplicating it.
@@ -153,13 +168,16 @@ Dockerfile (multi-stage)
                     no build cache, no dev dependencies in the final image
 
 docker-compose.yml (reads secrets from .env, never hardcoded)
-  postgres        (always started)  — official postgres:16 image, with a healthcheck
-  api             (always started)  — built from the Dockerfile, runs uvicorn
-  fake-server     (profile: demo)   — same image, runs a script that emulates a telemetry front-end
-  decoder         (profile: demo)   — same image, runs the CLI against fake-server
+  postgres        (always started)  — official postgres:16 image, with a healthcheck,
+                                       auto-initializes db/schema.sql on first boot
+  api             (always started)  — built from the Dockerfile, runs uvicorn, exposes /metrics
+  prometheus      (always started)  — scrapes api:8000/metrics every 5s (see prometheus.yml)
+  grafana         (always started)  — dashboards querying Prometheus as a data source
+  fake-server     (profile: demo)   — same image as api, runs a script emulating a telemetry front-end
+  decoder         (profile: demo)   — same image as api, runs the CLI against fake-server
 ```
 
-Every non-`postgres` service shares the **same built image** — only the `command:` differs. Services talk to each other by name (`postgres`, `fake-server`) via Docker Compose's internal DNS, never by hardcoded IP.
+Every non-`postgres`/non-`prometheus`/non-`grafana` service shares the **same built image** — only the `command:` differs. Services talk to each other by name (`postgres`, `prometheus`, `fake-server`) via Docker Compose's internal DNS, never by hardcoded IP.
 
 ## Architecture: CI/CD (GitHub Actions)
 
@@ -176,14 +194,14 @@ Every non-`postgres` service shares the **same built image** — only the `comma
                            if: only on a pushed tag (refs/tags/v*)
                            builds the image for linux/amd64 AND linux/arm64
                            (via QEMU + Buildx), pushes to
-                           ghcr.io/tyra2291/ccsds-tm-decom, tagged with
+                           ghcr.io/benoit-hassan/ccsds-tm-decom, tagged with
                            the version and "latest"
 ```
 
 A normal `git push` only ever runs the tests. Publishing a new image is a deliberate, separate action:
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
 ## Architecture: Kubernetes (local, via Minikube)
@@ -240,7 +258,26 @@ k8s/
         localhost:8000
 ```
 
-Access is via `kubectl port-forward` rather than the NodePort directly: Minikube's Docker driver on macOS doesn't expose node IPs directly to the host, so port-forwarding is the practical way to reach the API locally. On a real multi-node cluster, the NodePort (or, more commonly, a LoadBalancer/Ingress) would be reachable directly.
+Access is via `kubectl port-forward` rather than the NodePort directly: Minikube's Docker driver on macOS doesn't expose node IPs directly to the host, so port-forwarding is the practical way to reach the API locally. On a real multi-node cluster, the NodePort (or, more commonly, a LoadBalancer/Ingress) would be reachable directly. Prometheus and Grafana are not yet part of this deployment — see Known limitations.
+
+## Architecture: Observability (Prometheus + Grafana)
+
+```
+1. A frame is decoded (via TCP or file upload)
+2. io.storage.store_frame_result() persists it to PostgreSQL
+3. The same function increments in-memory Prometheus counters
+   (metrics.py: frames_decoded_total, packets_decoded_total),
+   labeled by mission_name (and, for packets, is_idle)
+4. Every 5s, Prometheus scrapes GET http://api:8000/metrics (see
+   prometheus.yml) and stores each value with a timestamp in its own
+   time-series database
+5. Grafana queries Prometheus (configured as a data source pointing at
+   http://prometheus:9090) to render the decode-rate dashboard, using
+   rate(ccsds_frames_decoded_total[1m]) to turn the raw cumulative
+   counter into an instantaneous frames/sec figure
+```
+
+Prometheus's own UI (`http://localhost:9090`) is useful on its own for a quick sanity check — Status → Targets should show the API as `UP`, and the Graph tab can run ad-hoc queries without needing Grafana at all.
 
 ## Tests
 
@@ -254,9 +291,10 @@ poetry run pytest -v
 
 ## Tech stack
 
-Python 3.14, Poetry, pytest, testcontainers, asyncpg, FastAPI, Docker/docker-compose, PostgreSQL, GitHub Actions, Kubernetes (Minikube).
+Python 3.14, Poetry, pytest, testcontainers, asyncpg, FastAPI, Docker/docker-compose, PostgreSQL, GitHub Actions, Kubernetes (Minikube), Prometheus, Grafana.
 
 ## Roadmap / not yet implemented
 
-- **Grafana/Prometheus**: metrics export and dashboards for monitoring decode throughput and error rates.
+- **Prometheus/Grafana on Kubernetes**: currently Docker Compose only.
+- **Persistent Grafana storage**: dashboards and data sources are not currently backed by a volume.
 - **Ingress**: a real HTTP routing layer instead of `kubectl port-forward`, for a more production-like local setup.
